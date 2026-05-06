@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const Hero = ({
-  title = 'Legal AI Assistant',
-  subtitle = 'Intelligent solutions for complex legal challenges',
+  title = 'Know Your Constitutional Rights',
+  subtitle = 'Get clarity on laws and legal options with AI-powered analysis',
   backgroundImage = '/images/hero-bg.png',
 }) => {
   const [query, setQuery] = useState('');
@@ -37,23 +37,7 @@ const Hero = ({
     setLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:5555/legal-help', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query }),
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        navigate('/legal-advice', {
-          state: { query, advice: data.advice },
-        });
-      } else {
-        setError(data.error || 'Something went wrong with your request');
-        if (inputRef.current) inputRef.current.focus();
-      }
+      navigate('/legal-advice', { state: { query } });
     } catch (err) {
       console.error(err);
       setError('Failed to connect to the server. Please try again later.');
@@ -146,7 +130,7 @@ const Hero = ({
         </form>
 
         <div className="hero-cta-secondary">
-          <a href="/services" className="cta-link">Explore our services</a>
+          <a href="/legal-advice" className="cta-link">Start a consultation</a>
           <span className="cta-separator" aria-hidden="true">or</span>
           <a href="/about" className="cta-link">Learn how it works</a>
         </div>

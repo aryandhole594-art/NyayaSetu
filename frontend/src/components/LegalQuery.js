@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import './LegalQuery.css';
 
-// ─── Markdown-lite renderer ──────────────────────────────────────────────────
 function RenderText({ text }) {
-  if (!text) return null;
-  const lines = text.split('\n');
+  if (text === null || text === undefined) return null;
+  const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+  const lines = safeText.split('\n');
   return (
     <div className="rendered-text">
       {lines.map((line, i) => {
         if (!line.trim()) return <br key={i} />;
-        if (line.startsWith('# '))  return <h2 key={i}>{line.slice(2)}</h2>;
+        if (line.startsWith('# ')) return <h2 key={i}>{line.slice(2)}</h2>;
         if (line.startsWith('## ')) return <h3 key={i}>{line.slice(3)}</h3>;
         if (line.startsWith('### ')) return <h4 key={i}>{line.slice(4)}</h4>;
         if (line.startsWith('- ') || line.startsWith('* ')) {
@@ -31,61 +31,59 @@ function renderInline(text) {
   );
 }
 
-// ─── Urgency Badge ───────────────────────────────────────────────────────────
+function normalizeTimelineTimeframe(step, index) {
+  const raw = String(step?.timeframe || '').trim();
+  if (!raw || raw.toLowerCase() === 'next' || raw.toLowerCase() === 'day 0') {
+    return `Day ${index + 1}-${index + 2}`;
+  }
+  return raw;
+}
+
 function UrgencyBadge({ urgency }) {
   if (!urgency) return null;
-  const icons = { CRITICAL: '🚨', HIGH: '⚠️', MEDIUM: 'ℹ️', STANDARD: '✅' };
   return (
-    <div className="urgency-badge" style={{ borderColor: urgency.color, color: urgency.color }}>
-      <span className="urgency-icon">{icons[urgency.level] || 'ℹ️'}</span>
-      <div>
-        <span className="urgency-level">{urgency.level}</span>
-        <span className="urgency-msg">{urgency.message}</span>
-      </div>
+    <div className={`urgency-banner ${urgency.level?.toLowerCase() || ''}`} style={{ borderColor: urgency.color }}>
+      <span className="urgency-level">{urgency.level}</span>
+      <span className="urgency-msg">{urgency.message}</span>
     </div>
   );
 }
 
-// ─── Typing dots ─────────────────────────────────────────────────────────────
 function TypingIndicator() {
   return (
     <div className="typing-indicator" aria-label="AI is thinking">
-      <div className="typing-avatar">⚖️</div>
+      <div className="avatar ai" style={{ fontSize: '1.2rem' }}>AI</div>
       <div className="typing-bubble">
         <span className="dot" /><span className="dot" /><span className="dot" />
       </div>
-      <span className="typing-label">Legal AI is analyzing your scenario…</span>
+      <span className="typing-label">Analyzing your legal scenario...</span>
     </div>
   );
 }
 
-// ─── Quick scenario chips ────────────────────────────────────────────────────
 const QUICK_SCENARIOS = [
-  { label: '🚗 Road Accident', text: 'I was injured in a road accident caused by another driver. What are my legal rights and how do I claim compensation?' },
-  { label: '👮 Unlawful Arrest', text: 'Police arrested me without showing a warrant and are refusing to let me call my lawyer. What are my rights?' },
-  { label: '🏠 Illegal Eviction', text: 'My landlord is forcefully evicting me without giving proper notice. What legal protection do I have?' },
-  { label: '👷 Salary Not Paid', text: 'My employer has not paid my salary for 3 months and is threatening to fire me. What can I do legally?' },
-  { label: '🛒 Consumer Fraud', text: 'I bought a product online that was defective and the seller is refusing to refund me. What are my rights?' },
-  { label: '📚 School Denied Admission', text: 'A private school refused to admit my child citing caste. Is this legal? What action can I take?' },
+  { label: 'Road Accident', text: 'I was injured in a road accident caused by another driver. What are my legal rights and how do I claim compensation?' },
+  { label: 'Unlawful Arrest', text: 'Police arrested me without showing a warrant and are refusing to let me call my lawyer. What are my rights?' },
+  { label: 'Illegal Eviction', text: 'My landlord is forcefully evicting me without giving proper notice. What legal protection do I have?' },
+  { label: 'Salary Not Paid', text: 'My employer has not paid my salary for 3 months and is threatening to fire me. What can I do legally?' },
+  { label: 'Consumer Fraud', text: 'I bought a product online that was defective and the seller is refusing to refund me. What are my rights?' },
+  { label: 'School Denied Admission', text: 'A private school refused to admit my child citing caste. Is this legal? What action can I take?' },
 ];
 
-// ─── Article Citation Card ───────────────────────────────────────────────────
 function ArticleCard({ article, index }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="article-card" style={{ animationDelay: `${index * 80}ms` }}>
-      <div className="article-card-header" onClick={() => setExpanded(e => !e)}>
+      <button className="article-card-header" onClick={() => setExpanded(e => !e)} aria-expanded={expanded}>
         <div className="article-number-badge">{article.number || 'Article'}</div>
         <div className="article-card-meta">
           <div className="article-card-title">{article.title}</div>
           {article.relevance && !expanded && (
-            <div className="article-card-preview">{article.relevance.slice(0, 80)}…</div>
+            <div className="article-card-preview">{article.relevance.slice(0, 92)}...</div>
           )}
         </div>
-        <button className="expand-btn" aria-label="Toggle details">
-          {expanded ? '▲' : '▼'}
-        </button>
-      </div>
+        <span className="expand-btn" aria-hidden="true">{expanded ? 'Hide' : 'View'}</span>
+      </button>
       {expanded && (
         <div className="article-card-body">
           <p>{article.relevance}</p>
@@ -95,13 +93,24 @@ function ArticleCard({ article, index }) {
   );
 }
 
-// ─── Retrieved Section Card ───────────────────────────────────────────────────
 function SectionCard({ section, index }) {
   const [expanded, setExpanded] = useState(false);
+  const breakdown = section.score_breakdown;
+  const showBreakdown = breakdown && Number.isFinite(breakdown.bm25) && Number.isFinite(breakdown.cosine);
+  const bm25Part = showBreakdown ? breakdown.bm25 * 0.6 : 0;
+  const cosinePart = showBreakdown ? breakdown.cosine * 0.4 * 10 : 0;
+  const titlePart = showBreakdown ? breakdown.title_boost : 0;
+  const total = bm25Part + cosinePart + titlePart;
+  const parts = [
+    { key: 'bm25', label: 'BM25', value: bm25Part },
+    { key: 'cosine', label: 'Cosine', value: cosinePart },
+    { key: 'title', label: 'Title', value: titlePart },
+  ];
+
   return (
     <div className="section-card" style={{ animationDelay: `${index * 80}ms` }}>
-      <div className="section-card-header" onClick={() => setExpanded(e => !e)}>
-        <div>
+      <button className="section-card-header" onClick={() => setExpanded(e => !e)} aria-expanded={expanded}>
+        <div className="section-card-primary">
           <div className="section-title">{section.title}</div>
           {section.article_numbers?.length > 0 && (
             <div className="section-articles">
@@ -119,11 +128,42 @@ function SectionCard({ section, index }) {
             />
           </div>
           <span className="relevance-label">Relevance</span>
+          {showBreakdown && (
+            <div className="score-breakdown">
+              <div className="breakdown-bar">
+                {parts.map(p => (
+                  <div
+                    key={p.key}
+                    className={`breakdown-seg ${p.key}`}
+                    style={{ width: `${total ? (p.value / total) * 100 : 0}%` }}
+                  />
+                ))}
+              </div>
+              <div className="breakdown-legend">
+                {parts.map(p => (
+                  <span key={p.key} className={`legend-item ${p.key}`}>
+                    <span className="legend-swatch" />
+                    {p.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        <button className="expand-btn">{expanded ? '▲' : '▼'}</button>
-      </div>
+        <span className="expand-btn" aria-hidden="true">{expanded ? 'Hide' : 'Open'}</span>
+      </button>
       {expanded && (
         <div className="section-card-body">
+          {breakdown?.matched_terms?.length > 0 && (
+            <div className="matched-terms">
+              <span className="matched-label">Matched terms</span>
+              <div className="matched-tags">
+                {breakdown.matched_terms.map(t => (
+                  <span key={t} className="matched-tag">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
           <pre className="constitution-text">{section.excerpt}</pre>
         </div>
       )}
@@ -131,41 +171,465 @@ function SectionCard({ section, index }) {
   );
 }
 
-// ─── Step Card ───────────────────────────────────────────────────────────────
-function StepCard({ step, index }) {
+function StructuredPanel({ structured, urgency, result, onFollowup }) {
+  if (!structured) {
+    return <p className="empty-state">No structured brief available.</p>;
+  }
+
+  const meta = structured.meta || {};
+  const summary = structured.summary || {};
+  const plain = structured.plain_words || {};
+  const parties = structured.parties || {};
+  const laws = structured.applicable_laws || [];
+  const rights = structured.rights_vs_limits?.rights || [];
+  const limits = structured.rights_vs_limits?.limits || [];
+  const steps = structured.steps || [];
+  const forum = structured.forum_comparison || {};
+  const relief = structured.relief_spectrum || [];
+  const strength = structured.case_strength || [];
+  const costBenefit = structured.cost_benefit || {};
+  const clauseRisks = structured.clause_risks || [];
+  const evidence = structured.evidence_checklist || [];
+  const doList = structured.do_and_avoid?.do || [];
+  const avoidList = structured.do_and_avoid?.avoid || [];
+  const misconceptions = structured.misconceptions || [];
+  const similar = structured.similar_cases || [];
+  const followups = structured.followups || [];
+  const snapshotRows = [
+    ['Domain', meta.domain || 'General legal query'],
+    ['Confidence', typeof meta.confidence === 'number' ? `${meta.confidence}%` : 'Unknown'],
+    ['Likely forum', parties.forum || 'To be confirmed'],
+    ['Provider', meta.llm_provider || 'AI assisted'],
+    ['Urgency', urgency?.level || 'Standard'],
+    ['Corpus fit', meta.in_scope === false ? 'Out of corpus' : 'In constitutional scope'],
+  ];
+
   return (
-    <div className="step-card" style={{ animationDelay: `${index * 60}ms` }}>
-      <div className="step-number">{index + 1}</div>
-      <div className="step-text">{step}</div>
+    <div className="brief-wrap">
+      <section className="brief-hero-card">
+        <div className="brief-hero-copy">
+          <span className="brief-kicker">Strategic brief</span>
+          <h3 className="brief-title">{meta.case_type || 'Legal Brief'}</h3>
+          <p className="brief-summary-line">{summary.one_line || 'Structured guidance prepared from the legal context available.'}</p>
+          {plain.short_explanation && <p className="brief-plain">{plain.short_explanation}</p>}
+        </div>
+        <div className="brief-hero-side">
+          {summary.signal && <span className="signal-chip">{summary.signal}</span>}
+          {urgency?.level && <span className={`urgency-pill ${urgency.level.toLowerCase()}`}>{urgency.level}</span>}
+          <div className="brief-meta">
+            {meta.domain && <span className="meta-chip">Domain: {meta.domain}</span>}
+            {typeof meta.confidence === 'number' && <span className="meta-chip">Confidence: {meta.confidence}%</span>}
+            {meta.in_scope === false && <span className="meta-chip warning">Out of corpus</span>}
+          </div>
+        </div>
+      </section>
+
+      <div className="brief-grid brief-grid-top">
+        <section className="brief-card brief-card-spotlight">
+          <div className="section-heading">
+            <h4>Case Snapshot</h4>
+            <span className="section-caption">Quick facts at a glance</span>
+          </div>
+          <div className="snapshot-table-wrap">
+            <table className="snapshot-table">
+              <tbody>
+                {snapshotRows.map(([label, value]) => (
+                  <tr key={label}>
+                    <th>{label}</th>
+                    <td>{value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Entity Map</h4>
+            <span className="section-caption">Who is involved and where this likely goes</span>
+          </div>
+          <div className="entity-flow">
+            <div className="entity-node">
+              <span className="entity-label">Complainant</span>
+              <strong>{parties.complainant || 'You'}</strong>
+            </div>
+            <div className="entity-connector" />
+            <div className="entity-node">
+              <span className="entity-label">Opposite party</span>
+              <strong>{parties.opposite_party || 'Respondent'}</strong>
+            </div>
+            <div className="entity-connector" />
+            <div className="entity-node">
+              <span className="entity-label">Forum</span>
+              <strong>{parties.forum || 'Authority'}</strong>
+            </div>
+          </div>
+          <div className="entity-subject-panel">
+            <span className="entity-label">Subject</span>
+            <p>{parties.subject || result.query || 'Legal issue summary unavailable.'}</p>
+          </div>
+        </section>
+      </div>
+
+      <section className="brief-card">
+        <div className="section-heading">
+          <h4>Action Timeline</h4>
+          <span className="section-caption">A clear sequence of what to do next</span>
+        </div>
+        {steps.length > 0 ? (
+          <div className="timeline-horizontal">
+            <div className="timeline-rail" />
+            {steps.map((s, i) => (
+              <div key={`${s.action || 'step'}-${i}`} className="timeline-stop">
+                <div className="timeline-marker">
+                  <span className="timeline-index">{i + 1}</span>
+                </div>
+                <div className="timeline-time">{normalizeTimelineTimeframe(s, i)}</div>
+                <div className="timeline-card">
+                  <div className="timeline-title">{s.action || 'Step'}</div>
+                  <div className="timeline-meta">Action</div>
+                  {s.why && <p className="timeline-note">{s.why}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="empty-state">No steps available.</p>
+        )}
+      </section>
+
+      <div className="brief-grid">
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Applicable Laws</h4>
+            <span className="section-caption">Primary laws supporting this scenario</span>
+          </div>
+          {laws.length > 0 ? (
+            <div className="law-grid">
+              {laws.map((law, i) => (
+                <div key={`${law.name}-${i}`} className="law-card">
+                  <div className="law-card-head">
+                    <strong>{law.name}</strong>
+                    {law.type && <span className="law-type">{law.type}</span>}
+                  </div>
+                  {law.why_it_applies && <p>{law.why_it_applies}</p>}
+                  {law.citations?.length > 0 && (
+                    <div className="law-citations">
+                      {law.citations.map(c => (
+                        <span key={c} className="law-chip">{c}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-state">No laws extracted for this query.</p>
+          )}
+        </section>
+
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Case Strength</h4>
+            <span className="section-caption">Signals that can help or weaken the matter</span>
+          </div>
+          <div className="strength-grid">
+            {strength.length > 0 ? strength.map((s, i) => (
+              <div key={`${s.label}-${i}`} className="strength-item">
+                <div className="strength-label">
+                  <span>{s.label}</span>
+                  <span className="strength-value">{Math.min(100, s.score || 0)}%</span>
+                </div>
+                <div className="strength-bar">
+                  <div className="strength-fill" style={{ width: `${Math.min(100, s.score || 0)}%` }} />
+                </div>
+                <div className="strength-note">{s.note || 'No note available.'}</div>
+              </div>
+            )) : (
+              <div className="strength-empty">
+                <span className="empty-number">01</span>
+                <p>No strength signals available yet. Evidence and documents will shape this most.</p>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div className="brief-grid">
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Rights You Can Claim</h4>
+            <span className="section-caption">The strongest rights visible from the current facts</span>
+          </div>
+          <div className="pill-list">
+            {rights.length > 0 ? rights.map((item, i) => (
+              <div key={`${item}-${i}`} className="info-pill positive">{item}</div>
+            )) : <p className="empty-state">No rights extracted.</p>}
+          </div>
+        </section>
+
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Limits and Watchouts</h4>
+            <span className="section-caption">Things that can narrow the claim or require caution</span>
+          </div>
+          <div className="pill-list">
+            {limits.length > 0 ? limits.map((item, i) => (
+              <div key={`${item}-${i}`} className="info-pill caution">{item}</div>
+            )) : <p className="empty-state">No limitations extracted.</p>}
+          </div>
+        </section>
+      </div>
+
+      <div className="brief-grid">
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Evidence Checklist</h4>
+            <span className="section-caption">Documents and records worth gathering now</span>
+          </div>
+          <div className="checklist-grid">
+            {evidence.length > 0 ? evidence.map((item, i) => (
+              <div key={`${item}-${i}`} className="check-card">{item}</div>
+            )) : <p className="empty-state">No evidence checklist available.</p>}
+          </div>
+        </section>
+
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Do and Avoid</h4>
+            <span className="section-caption">Practical moves that improve the position</span>
+          </div>
+          <div className="dual-callout">
+            <div className="callout-panel do-panel">
+              <span className="callout-label">Do this</span>
+              <div className="stack-list">
+                {doList.length > 0 ? doList.map((item, i) => (
+                  <div key={`${item}-${i}`} className="stack-item">{item}</div>
+                )) : <div className="stack-item muted">No action items listed.</div>}
+              </div>
+            </div>
+            <div className="callout-panel avoid-panel">
+              <span className="callout-label">Avoid this</span>
+              <div className="stack-list">
+                {avoidList.length > 0 ? avoidList.map((item, i) => (
+                  <div key={`${item}-${i}`} className="stack-item">{item}</div>
+                )) : <div className="stack-item muted">No avoid items listed.</div>}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {forum.rows?.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Forum Comparison</h4>
+            <span className="section-caption">Compare where the matter can be taken</span>
+          </div>
+          <div className="forum-table-wrap">
+            <table className="forum-table">
+              <thead>
+                <tr>
+                  <th>Factor</th>
+                  {(forum.forums || []).map(f => <th key={f}>{f}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {forum.rows.map((row, i) => (
+                  <tr key={`${row.factor}-${i}`}>
+                    <td>{row.factor}</td>
+                    {(row.values || []).map((v, idx) => <td key={`${row.factor}-${idx}`}>{v}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {(relief.length > 0 || costBenefit.invest?.length > 0 || costBenefit.recover?.length > 0) && (
+        <div className="brief-grid">
+          {relief.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Relief Spectrum</h4>
+                <span className="section-caption">Typical outcomes to aim for</span>
+              </div>
+              <div className="relief-list">
+                {relief.map((r, i) => (
+                  <div key={`${r.label}-${i}`} className="relief-item">
+                    <div className="relief-copy">
+                      <div className="relief-label">{r.label}</div>
+                      <div className="relief-range">{r.range}</div>
+                    </div>
+                    <div className={`relief-bar ${r.level || ''}`}>
+                      <div style={{ width: `${Math.min(100, r.likelihood || 0)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {(costBenefit.invest?.length > 0 || costBenefit.recover?.length > 0) && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Cost and Recovery</h4>
+                <span className="section-caption">Likely inputs versus possible returns</span>
+              </div>
+              <div className="cost-benefit">
+                <div className="cost-panel">
+                  <h5>What you invest</h5>
+                  {(costBenefit.invest || []).map((item, i) => (
+                    <div key={`${item.item}-${i}`} className="cost-row">
+                      <span>{item.item}</span>
+                      <strong>{item.amount}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="benefit-panel">
+                  <h5>What you can recover</h5>
+                  {(costBenefit.recover || []).map((item, i) => (
+                    <div key={`${item.item}-${i}`} className="cost-row">
+                      <span>{item.item}</span>
+                      <strong>{item.amount}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {clauseRisks.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Clause Risk Scanner</h4>
+            <span className="section-caption">Terms that may need revision or caution</span>
+          </div>
+          <div className="risk-list">
+            {clauseRisks.map((c, i) => (
+              <div key={`${c.clause}-${i}`} className={`risk-item ${c.risk_level || 'medium'}`}>
+                <div className="risk-head">
+                  <strong>{c.clause}</strong>
+                  <span className="risk-level">{c.risk_level}</span>
+                </div>
+                <p>{c.issue}</p>
+                {c.fix && <div className="risk-fix">Fix: {c.fix}</div>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(misconceptions.length > 0 || similar.length > 0) && (
+        <div className="brief-grid">
+          {misconceptions.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Common Misconceptions</h4>
+                <span className="section-caption">Quick legal corrections worth knowing</span>
+              </div>
+              <div className="misconceptions">
+                {misconceptions.map((m, i) => (
+                  <div key={`${m.claim}-${i}`} className="misconception-item">
+                    <div className="misconception-claim">{m.claim}</div>
+                    <div className="misconception-truth">{m.truth}</div>
+                    {m.explanation && <div className="misconception-note">{m.explanation}</div>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {similar.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Similar Precedents</h4>
+                <span className="section-caption">Comparable court outcomes</span>
+              </div>
+              <div className="precedent-row">
+                {similar.map((c, i) => (
+                  <div key={`${c.case_name}-${i}`} className="precedent-card">
+                    <div className="precedent-title">{c.case_name}</div>
+                    <div className="precedent-meta">{c.court} / {c.year}</div>
+                    <div className="precedent-outcome">{c.outcome}</div>
+                    {c.similarity && (
+                      <div className="precedent-bar">
+                        <div style={{ width: `${c.similarity.replace('%', '')}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {followups.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Useful Follow Ups</h4>
+            <span className="section-caption">Questions worth asking next</span>
+          </div>
+          <div className="followup-list">
+            {followups.map((f, i) => (
+              <button
+                key={`${f}-${i}`}
+                type="button"
+                className="followup-chip followup-btn"
+                onClick={() => onFollowup?.(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
-// ─── Right Item ──────────────────────────────────────────────────────────────
+function StepCard({ step, index }) {
+  return (
+    <div className="step-card" style={{ animationDelay: `${index * 60}ms` }}>
+      <div className="step-number">{index + 1}</div>
+      <div className="step-copy">
+        <div className="step-title">{step}</div>
+        <div className="step-subtitle">Immediate action item</div>
+      </div>
+    </div>
+  );
+}
+
 function RightItem({ right, index }) {
   return (
     <div className="right-item" style={{ animationDelay: `${index * 60}ms` }}>
-      <span className="right-icon">⚖️</span>
       <span className="right-text">{right}</span>
     </div>
   );
 }
 
-// ─── Result Panel (tabbed) ────────────────────────────────────────────────────
-function ResultPanel({ result }) {
-  const [activeTab, setActiveTab] = useState('analysis');
+function ResultPanel({ result, onFollowup }) {
+  const [activeTab, setActiveTab] = useState('brief');
 
   const tabs = [
-    { id: 'analysis',  label: '📋 Analysis',        count: null },
-    { id: 'articles',  label: '📜 Articles',         count: result.articles_cited?.length || result.retrieved_sections?.length },
-    { id: 'rights',    label: '🛡️ Your Rights',      count: result.your_rights?.length },
-    { id: 'steps',     label: '🚀 Next Steps',        count: result.next_steps?.length },
-    { id: 'sources',   label: '📂 Source Sections',  count: result.retrieved_sections?.length },
+    { id: 'brief', label: 'Brief', count: null, note: 'Executive summary and strategy' },
+    { id: 'analysis', label: 'Analysis', count: result.key_points?.length || null, note: 'Narrative legal reasoning' },
+    { id: 'articles', label: 'Articles', count: result.articles_cited?.length || result.retrieved_sections?.length, note: 'Core citations and references' },
+    { id: 'rights', label: 'Rights', count: result.your_rights?.length, note: 'Rights triggered by the facts' },
+    { id: 'steps', label: 'Next Steps', count: result.next_steps?.length, note: 'Practical actions to take' },
+    { id: 'sources', label: 'Source Sections', count: result.retrieved_sections?.length, note: 'Retrieved constitutional text' },
   ];
+
+  const activeTabMeta = tabs.find(tab => tab.id === activeTab) || tabs[0];
 
   const copyText = useCallback(async () => {
     const text = [
-      `LEGAL ANALYSIS — ${result.case_type}`,
+      `LEGAL ANALYSIS - ${result.case_type}`,
       `Query: ${result.query}`,
       '',
       'SUMMARY:',
@@ -187,33 +651,22 @@ function ResultPanel({ result }) {
 
   return (
     <div className="result-panel">
-      {/* Header */}
       <div className="result-header">
-        <div className="result-title-row">
-          <div>
-            <div className="case-type-tag">{result.case_type}</div>
+        <div className="result-header-top">
+          <div className="result-title-section">
+            <p className="result-eyebrow">{result.case_type}</p>
             <h2 className="result-title">Legal Analysis</h2>
+            <p className="result-summary">{result.summary}</p>
           </div>
-          <div className="result-header-actions">
-            {!result.ai_powered && (
-              <span className="fallback-badge">📚 Document Mode</span>
-            )}
-            {result.ai_powered && (
-              <span className="ai-badge">✨ AI Powered</span>
-            )}
+          <div className="result-badges">
+            <span className={`badge ${result.ai_powered ? 'ai' : ''}`}>{result.ai_powered ? 'AI Powered' : 'Document Mode'}</span>
             <button className="icon-btn" onClick={copyText} title="Copy full analysis">
-              📋 Copy
+              Copy Brief
             </button>
           </div>
         </div>
 
         <UrgencyBadge urgency={result.urgency} />
-
-        {result.summary && (
-          <div className="result-summary">
-            <strong>Summary: </strong>{result.summary}
-          </div>
-        )}
 
         {result.legal_topics?.length > 0 && (
           <div className="topics-row">
@@ -224,119 +677,147 @@ function ResultPanel({ result }) {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="tab-bar" role="tablist">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-            {tab.count > 0 && <span className="tab-count">{tab.count}</span>}
-          </button>
-        ))}
-      </div>
+      <div className="result-shell">
+        <aside className="result-sidebar">
+          <div className="sidebar-card">
+            <span className="sidebar-label">Consultation flow</span>
+            <h3>{activeTabMeta.label}</h3>
+            <p>{activeTabMeta.note}</p>
+          </div>
 
-      {/* Tab Content */}
-      <div className="tab-content">
+          <nav className="sidebar-nav" aria-label="Result sections">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`sidebar-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <span className="sidebar-tab-copy">
+                  <span className="sidebar-tab-label">{tab.label}</span>
+                  <span className="sidebar-tab-note">{tab.note}</span>
+                </span>
+                {tab.count > 0 && <span className="tab-count">{tab.count}</span>}
+              </button>
+            ))}
+          </nav>
 
-        {activeTab === 'analysis' && (
-          <div className="tab-pane">
-            {result.key_points?.length > 0 && (
-              <div className="key-points-box">
-                <h4>🔑 Key Legal Points</h4>
-                <ul>
-                  {result.key_points.map((pt, i) => <li key={i}>{pt}</li>)}
-                </ul>
+          <div className="sidebar-card sidebar-card-muted">
+            <span className="sidebar-label">Working query</span>
+            <p>{result.query}</p>
+          </div>
+        </aside>
+
+        <div className="result-main">
+          <div className="tab-content">
+            {activeTab === 'brief' && (
+              <div className="tab-pane">
+                <StructuredPanel
+                  structured={result.structured}
+                  urgency={result.urgency}
+                  result={result}
+                  onFollowup={onFollowup}
+                />
               </div>
             )}
-            <div className="analysis-body">
-              <RenderText text={result.analysis} />
-            </div>
-          </div>
-        )}
 
-        {activeTab === 'articles' && (
-          <div className="tab-pane">
-            {result.articles_cited?.length > 0 ? (
-              <>
-                <p className="tab-intro">Constitutional articles directly relevant to your case:</p>
-                <div className="articles-list">
-                  {result.articles_cited.map((a, i) => (
-                    <ArticleCard key={i} article={a} index={i} />
+            {activeTab === 'analysis' && (
+              <div className="tab-pane">
+                {result.key_points?.length > 0 && (
+                  <div className="key-points-box">
+                    <div className="section-heading">
+                      <h4>Key Legal Points</h4>
+                      <span className="section-caption">Fast scan of the most important takeaways</span>
+                    </div>
+                    <div className="key-points-grid">
+                      {result.key_points.map((pt, i) => <div key={`${pt}-${i}`} className="key-point-card">{pt}</div>)}
+                    </div>
+                  </div>
+                )}
+                <div className="analysis-body">
+                  <RenderText text={result.analysis} />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'articles' && (
+              <div className="tab-pane">
+                {result.articles_cited?.length > 0 ? (
+                  <>
+                    <p className="tab-intro">Constitutional articles directly relevant to your case.</p>
+                    <div className="articles-list">
+                      {result.articles_cited.map((a, i) => (
+                        <ArticleCard key={`${a.number || a.title}-${i}`} article={a} index={i} />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="empty-state">No specific articles were extracted by the AI. Use Source Sections to inspect the retrieved constitutional text.</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'rights' && (
+              <div className="tab-pane">
+                <p className="tab-intro">Based on your situation, these rights appear most relevant under Indian law.</p>
+                <div className="rights-list">
+                  {(result.your_rights || []).map((r, i) => (
+                    <RightItem key={`${r}-${i}`} right={r} index={i} />
                   ))}
                 </div>
-              </>
-            ) : (
-              <p className="empty-state">No specific articles were extracted by the AI. See Source Sections tab for retrieved constitutional text.</p>
+                <div className="legal-aid-box">
+                  <h4>Free legal support</h4>
+                  <p>Contact the <strong>District Legal Services Authority (DLSA)</strong> for free legal aid.</p>
+                  <p><strong>Tele-Law Helpline:</strong> 15100</p>
+                  <p><strong>National Legal Services Authority:</strong> nalsa.gov.in</p>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'steps' && (
+              <div className="tab-pane">
+                <p className="tab-intro">Action items for your situation.</p>
+                <div className="steps-list">
+                  {(result.next_steps || []).map((s, i) => (
+                    <StepCard key={`${s}-${i}`} step={s} index={i} />
+                  ))}
+                </div>
+                <div className="disclaimer-box">
+                  <span className="disclaimer-label">Important</span>
+                  <p>{result.disclaimer}</p>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'sources' && (
+              <div className="tab-pane">
+                <p className="tab-intro">These sections were retrieved from the Constitution of India using the hybrid RAG engine.</p>
+                <div className="sections-list">
+                  {(result.retrieved_sections || []).map((s, i) => (
+                    <SectionCard key={`${s.title}-${i}`} section={s} index={i} />
+                  ))}
+                </div>
+              </div>
             )}
           </div>
-        )}
-
-        {activeTab === 'rights' && (
-          <div className="tab-pane">
-            <p className="tab-intro">Based on your situation, you have the following rights under Indian law:</p>
-            <div className="rights-list">
-              {(result.your_rights || []).map((r, i) => (
-                <RightItem key={i} right={r} index={i} />
-              ))}
-            </div>
-            <div className="legal-aid-box">
-              <h4>🆘 Need Free Legal Help?</h4>
-              <p>Contact the <strong>District Legal Services Authority (DLSA)</strong> for free legal aid.</p>
-              <p>📞 <strong>Tele-Law Helpline: 15100</strong> (Free, available in regional languages)</p>
-              <p>🌐 <strong>nalsa.gov.in</strong> — National Legal Services Authority</p>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'steps' && (
-          <div className="tab-pane">
-            <p className="tab-intro">Recommended immediate actions for your situation:</p>
-            <div className="steps-list">
-              {(result.next_steps || []).map((s, i) => (
-                <StepCard key={i} step={s} index={i} />
-              ))}
-            </div>
-            <div className="disclaimer-box">
-              <span>⚠️</span>
-              <p>{result.disclaimer}</p>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'sources' && (
-          <div className="tab-pane">
-            <p className="tab-intro">These sections were retrieved from the Constitution of India using the hybrid RAG engine (BM25 + TF-IDF):</p>
-            <div className="sections-list">
-              {(result.retrieved_sections || []).map((s, i) => (
-                <SectionCard key={i} section={s} index={i} />
-              ))}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Message bubble ───────────────────────────────────────────────────────────
 function UserBubble({ text }) {
   return (
-    <div className="user-bubble">
-      <div className="user-avatar">👤</div>
-      <div className="user-bubble-text">{text}</div>
+    <div className="chat-entry user">
+      <div className="avatar user" style={{ fontSize: '1.2rem' }}>U</div>
+      <div className="bubble">{text}</div>
     </div>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
 function LegalQuery() {
   const [query, setQuery] = useState('');
-  const [conversation, setConversation] = useState([]); // [{role, text, result?}]
+  const [conversation, setConversation] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fadeIn, setFadeIn] = useState(false);
@@ -344,20 +825,13 @@ function LegalQuery() {
 
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
+  const autoSubmittedRef = useRef(false);
   const location = useLocation();
 
   const initialQuery = location.state?.query || '';
-  const initialAdvice = location.state?.advice || '';
 
   useEffect(() => {
     setTimeout(() => setFadeIn(true), 100);
-    if (initialQuery && initialAdvice && conversation.length === 0) {
-      setConversation([
-        { role: 'user', text: initialQuery },
-        { role: 'assistant', text: initialAdvice, result: null },
-      ]);
-    }
-    // Health check
     fetch('http://127.0.0.1:5555/health')
       .then(r => r.json())
       .then(d => setBackendStatus(d))
@@ -409,6 +883,13 @@ function LegalQuery() {
     }
   }, [conversation]);
 
+  useEffect(() => {
+    if (!autoSubmittedRef.current && initialQuery && conversation.length === 0) {
+      autoSubmittedRef.current = true;
+      submitQuery(initialQuery);
+    }
+  }, [initialQuery, conversation.length, submitQuery]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     submitQuery(query);
@@ -426,107 +907,96 @@ function LegalQuery() {
   };
 
   const hasConversation = conversation.length > 0;
+  const lastAssistantResult = [...conversation].reverse().find(msg => msg.role === 'assistant' && msg.result)?.result || null;
+  const hasOutput = Boolean(lastAssistantResult) || loading;
 
   return (
     <div className={`lq-root ${fadeIn ? 'fade-in' : ''}`}>
-      {/* Sidebar */}
-      <aside className="lq-sidebar">
-        <div className="sidebar-header">
-          <h2>⚖️ LegalAI</h2>
-          <p>Your AI-powered Constitutional guide</p>
-        </div>
-
-        {backendStatus && (
-          <div className="backend-status">
-            <span className={`status-dot ${backendStatus.gemini_available ? 'green' : 'yellow'}`} />
-            <span>{backendStatus.gemini_available ? 'AI + RAG Active' : 'RAG Mode (No AI)'}</span>
-            <span className="status-chunks">{backendStatus.index_chunks} chunks indexed</span>
+      {!hasConversation && !loading && (
+        <section className="lq-welcome">
+          <div className="welcome-hero-panel">
+            <div className="welcome-copy">
+              <span className="welcome-kicker">Premium legal workspace</span>
+              <h1>Ask About Your Rights</h1>
+              <p>Structured constitutional guidance with sharper design, clearer hierarchy, and action-first legal briefings.</p>
+            </div>
+            <div className="welcome-stat-grid">
+              <div className="welcome-stat-card">
+                <span className="welcome-stat-number">2130+</span>
+                <span className="welcome-stat-label">Constitution chunks indexed</span>
+              </div>
+              <div className="welcome-stat-card">
+                <span className="welcome-stat-number">RAG</span>
+                <span className="welcome-stat-label">Grounded retrieval pipeline</span>
+              </div>
+              <div className="welcome-stat-card">
+                <span className="welcome-stat-number">AI</span>
+                <span className="welcome-stat-label">Structured brief generation</span>
+              </div>
+            </div>
           </div>
-        )}
 
-        <div className="sidebar-section">
-          <h3>Quick Scenarios</h3>
-          <div className="quick-scenarios">
+          <div className="quick-scenarios-grid">
             {QUICK_SCENARIOS.map((s, i) => (
               <button
                 key={i}
-                className="scenario-chip"
+                className="scenario-card"
                 onClick={() => handleChipClick(s.text)}
                 disabled={loading}
               >
-                {s.label}
+                <span className="scenario-card-label">{s.label}</span>
+                <span className="scenario-card-text">{s.text}</span>
               </button>
             ))}
           </div>
-        </div>
+        </section>
+      )}
 
-        {hasConversation && (
-          <button className="new-chat-btn" onClick={handleNewChat}>
-            ✚ New Consultation
-          </button>
-        )}
-
-        <div className="sidebar-footer">
-          <p>🔒 Your queries are private</p>
-          <p>📖 Based on Constitution of India</p>
-          <p>📞 Tele-Law: <strong>15100</strong></p>
-        </div>
-      </aside>
-
-      {/* Main Chat Area */}
-      <main className="lq-main">
-        {/* Chat History */}
-        <div className="lq-chat-area">
-          {!hasConversation && !loading && (
-            <div className="lq-welcome">
-              <div className="welcome-icon">⚖️</div>
-              <h1>Legal AI Consultation</h1>
-              <p>Describe your legal situation in plain language. I'll analyze it against the Constitution of India and guide you on your rights and next steps.</p>
-              <div className="welcome-features">
-                <div className="welcome-feat">📜 Constitutional Analysis</div>
-                <div className="welcome-feat">🛡️ Know Your Rights</div>
-                <div className="welcome-feat">🚀 Actionable Steps</div>
-                <div className="welcome-feat">📂 Source Citations</div>
-              </div>
+      {backendStatus && hasConversation && (
+        <div className="status-card">
+          <div className="status-indicator">
+            <div className="status-dot" />
+            <div className="status-text">
+              {backendStatus.ai_available ? 'RAG + AI' : 'RAG only'} / Provider: {backendStatus.llm_provider || 'unknown'} / {backendStatus.index_chunks} chunks
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {conversation.map((msg, index) => (
-            <div key={index} className="chat-entry">
-              {msg.role === 'user' ? (
-                <UserBubble text={msg.text} />
+      <div className="lq-chat-area">
+        {conversation.map((msg, index) => (
+          <div key={index}>
+            {msg.role === 'user' ? (
+              <UserBubble text={msg.text} />
+            ) : (
+              msg.result ? (
+                <ResultPanel result={msg.result} onFollowup={handleChipClick} />
               ) : (
-                msg.result
-                  ? <ResultPanel result={msg.result} />
-                  : (
-                    <div className="result-panel">
-                      <div className="tab-content">
-                        <div className="tab-pane">
-                          <RenderText text={msg.text} />
-                        </div>
-                      </div>
-                    </div>
-                  )
-              )}
-            </div>
-          ))}
+                <div className="chat-entry ai">
+                  <div className="avatar ai" style={{ fontSize: '1.2rem' }}>AI</div>
+                  <div className="bubble">
+                    <RenderText text={msg.text} />
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        ))}
+        {loading && <TypingIndicator />}
+        <div ref={chatEndRef} />
+      </div>
 
-          {loading && <TypingIndicator />}
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* Input Bar */}
-        <div className="lq-input-bar">
-          {error && (
-            <div className="lq-error" role="alert">
-              <span>⚠️</span> {error}
-            </div>
-          )}
-          <form onSubmit={handleSubmit} className="lq-form">
+      <div className={`query-compose ${hasOutput ? 'is-collapsed' : 'is-expanded'}`}>
+        {error && (
+          <div className="inline-error">
+            {error}
+          </div>
+        )}
+        <form onSubmit={handleSubmit} className="query-form">
+          <div className="lq-input-bar">
             <textarea
               ref={inputRef}
               id="legal-query-input"
-              className="lq-textarea"
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => {
@@ -535,30 +1005,30 @@ function LegalQuery() {
                   handleSubmit(e);
                 }
               }}
-              placeholder="Describe your legal situation… (e.g. 'Police arrested me without a warrant at 2am')"
+              placeholder="Describe your legal situation... for example: Police arrested me without showing a warrant."
               disabled={loading}
               rows={2}
               aria-label="Enter your legal scenario"
             />
             <button
               type="submit"
-              className="lq-submit-btn"
+              className="submit-btn"
               disabled={loading || !query.trim()}
               id="submit-legal-query"
             >
-              {loading ? (
-                <span className="btn-spinner" />
-              ) : (
-                <>
-                  <span>Ask</span>
-                  <span className="send-arrow">➤</span>
-                </>
-              )}
+              {loading ? 'Analyzing...' : 'Ask'}
             </button>
-          </form>
-          <p className="input-hint">Press <kbd>Enter</kbd> to submit · <kbd>Shift+Enter</kbd> for new line</p>
-        </div>
-      </main>
+          </div>
+        </form>
+        {hasConversation && (
+          <button
+            className="submit-btn secondary-btn"
+            onClick={handleNewChat}
+          >
+            New
+          </button>
+        )}
+      </div>
     </div>
   );
 }

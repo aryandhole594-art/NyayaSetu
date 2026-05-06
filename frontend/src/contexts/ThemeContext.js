@@ -11,11 +11,8 @@ export function ThemeProvider({ children }) {
     if (savedTheme) {
       return savedTheme;
     }
-    
-    // Check user's system preference
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches 
-      ? 'dark' 
-      : 'light';
+
+    return 'dark';
   };
 
   const [theme, setTheme] = useState(getInitialTheme);

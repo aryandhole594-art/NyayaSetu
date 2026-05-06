@@ -57,7 +57,12 @@ def expand_query(query: str) -> list[str]:
     query_lower = query.lower()
     for key, synonyms in LEGAL_SYNONYMS.items():
         if key in query_lower or any(s in query_lower for s in synonyms[:2]):
-            expanded.extend(synonyms)
+            for syn in synonyms:
+                expanded.extend(tokenize(syn))
+            if key == "education":
+                expanded.append("21a")
+    if any(k in query_lower for k in ["social media", "post", "tweet", "censorship", "criticised", "criticized"]):
+        expanded.extend(["speech", "expression", "freedom"])
     return list(set(expanded))
 
 
@@ -90,9 +95,15 @@ class HybridRAGIndex:
         """
         self.chunks = []
 
+        # Skip the table of contents if present by starting from the last PREAMBLE
+        # (the first PREAMBLE usually appears in the contents section).
+        preamble_matches = list(re.finditer(r"\bPREAMBLE\b", text))
+        if preamble_matches:
+            text = text[preamble_matches[-1].start():]
+
         # Try to split on article/section boundaries first
         article_splits = re.split(
-            r'(?=(?:ARTICLE|Article|PART|Part|SCHEDULE|Schedule)\s+\w+)',
+            r'(?m)(?=^(?:ARTICLE|Article|PART|Part|SCHEDULE|Schedule)\s+\w+|^(?:\d+\[)?\d{1,3}[A-Z]?\.)',
             text
         )
 
@@ -115,7 +126,23 @@ class HybridRAGIndex:
                 r'^((?:ARTICLE|Article|PART|Part|SCHEDULE|Schedule)\s+[\w]+[^\n]*)',
                 chunk
             )
-            title = title_match.group(1).strip() if title_match else f"Section {i+1}"
+            if title_match:
+                title = title_match.group(1).strip()
+            else:
+                # Fallback for numbered article lines like "19.Protection of..."
+                num_match = re.match(r'^(?:\d+\[)?(\d{1,3}[A-Z]?)\.\s*([^\n]{0,80})', chunk)
+                if num_match:
+                    num = num_match.group(1)
+                    head = num_match.group(2).strip()
+                    if head:
+                        if re.search(r"\bSCHEDULE\b", chunk[:120], flags=re.IGNORECASE):
+                            title = f"Schedule item {num} - {head}"
+                        else:
+                            title = f"Article {num} - {head}"
+                    else:
+                        title = f"Article {num}"
+                else:
+                    title = f"Section {i+1}"
 
             tokens = tokenize(chunk)
             self.chunks.append({
@@ -199,24 +226,48 @@ class HybridRAGIndex:
             # Title boost: if query terms appear in article title
             title_boost = 0
             title_lower = chunk["title"].lower()
-            for t in query_tokens:
-                if t in title_lower:
-                    title_boost += 2
+            if title_lower.startswith("article") or title_lower.startswith("part"):
+                for t in query_tokens:
+                    if t in title_lower:
+                        title_boost += 2
 
             hybrid_score = 0.6 * bm25 + 0.4 * cosine * 10 + title_boost
 
-            if hybrid_score > 0:
-                scored.append((hybrid_score, chunk))
+            matched_terms = []
+            seen_terms = set()
+            for term in query_tokens:
+                if term in chunk["tf"] and term not in seen_terms:
+                    matched_terms.append(term)
+                    seen_terms.add(term)
 
-        scored.sort(key=lambda x: x[0], reverse=True)
+            if hybrid_score > 0:
+                scored.append({
+                    "score": hybrid_score,
+                    "bm25": bm25,
+                    "cosine": cosine,
+                    "title_boost": title_boost,
+                    "matched_terms": matched_terms,
+                    "chunk": chunk,
+                })
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
         results = []
-        for score, chunk in scored[:top_k]:
-            article_nums = re.findall(r'Article\s+(\d+[A-Z]?)', chunk["text"])
+        for entry in scored[:top_k]:
+            chunk = entry["chunk"]
+            article_nums = re.findall(r'(?i)Article\s+(\d+[A-Z]?)', chunk["text"])
+            article_nums += re.findall(r'(?m)^(?:\d+\[)?(\d{1,3}[A-Z]?)\.', chunk["text"])
             results.append({
                 "title": chunk["title"],
                 "text": chunk["text"],
-                "score": round(score, 3),
+                "score": round(entry["score"], 3),
                 "article_numbers": list(dict.fromkeys(article_nums))[:5],  # deduplicate
+                "score_breakdown": {
+                    "bm25": round(entry["bm25"], 3),
+                    "cosine": round(entry["cosine"], 3),
+                    "title_boost": round(entry["title_boost"], 3),
+                    "hybrid": round(entry["score"], 3),
+                    "matched_terms": entry["matched_terms"][:12],
+                },
             })
         return results
 

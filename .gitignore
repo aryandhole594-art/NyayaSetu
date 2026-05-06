@@ -134,3 +134,37 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+
+# Local builds
+build/
+frontend/build/
+
+# Local runtime/config
+config.yaml
+.env
+.env.*
+!.env.example
+
+# Local notes/scratch files
+commands.txt
+context.txt
