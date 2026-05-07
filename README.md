@@ -8,6 +8,10 @@ Ollama (local) or Gemini.
 - Hybrid retrieval with explainability scores
 - Local LLM via Ollama (phi3/llama3) or Gemini fallback
 - Rights and next-steps templates for common scenarios
+- Document intelligence:
+  - Upload PDF/DOCX/image and merge extracted text into corpus
+  - Contract risk analyzer (regex + constitutional RAG grounding)
+  - Court notice decoder (deadline extraction + section grounding)
 
 ## Tech stack
 - Backend: Flask (Python)
@@ -21,6 +25,8 @@ cd backend
 pip install -r requirements.txt
 python app.py
 ```
+
+OCR note: install the Tesseract binary on your system (for example `brew install tesseract` on macOS) so scanned PDF/image extraction works. Handwriting is supported as best-effort via image preprocessing + OCR fallback.
 
 Frontend (Terminal 2):
 ```
@@ -56,6 +62,26 @@ POST /legal-help
 curl -X POST http://127.0.0.1:5555/legal-help \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"Police arrested me without telling the reason\"}"
+```
+
+POST /document-intel/upload (multipart file upload)
+```
+curl -X POST http://127.0.0.1:5555/document-intel/upload \
+  -F "file=@/absolute/path/to/contract.pdf"
+```
+
+POST /document-intel/contract-analyze
+```
+curl -X POST http://127.0.0.1:5555/document-intel/contract-analyze \
+  -H "Content-Type: application/json" \
+  -d "{\"text\":\"...contract text...\"}"
+```
+
+POST /document-intel/court-notice-decode
+```
+curl -X POST http://127.0.0.1:5555/document-intel/court-notice-decode \
+  -H "Content-Type: application/json" \
+  -d "{\"text\":\"...notice text...\"}"
 ```
 
 ## Notes
