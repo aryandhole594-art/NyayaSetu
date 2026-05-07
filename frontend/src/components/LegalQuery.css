@@ -1844,3 +1844,48 @@
     font-size: 1.4rem;
   }
 }
+
+.doc-upload-bar {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.doc-upload-label {
+  color: var(--lq-text-faint);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+.doc-upload-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.doc-upload-controls input[type='file'] {
+  width: 100%;
+  color: var(--lq-text-soft);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.doc-upload-file {
+  color: var(--lq-text-soft);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 720px) {
+  .doc-upload-controls {
+    grid-template-columns: 1fr;
+  }
+}

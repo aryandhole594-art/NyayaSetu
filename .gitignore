@@ -137,6 +137,7 @@ dist
 
 # Python
 __pycache__/
+backend/__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
@@ -146,6 +147,7 @@ __pycache__/
 
 # Local virtual environments
 .venv/
+.venv311/
 venv/
 env/
 ENV/
@@ -168,3 +170,4 @@ config.yaml
 # Local notes/scratch files
 commands.txt
 context.txt
+context.md

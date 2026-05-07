@@ -87,6 +87,15 @@ function App() {
                   </Link>
                 </li>
                 <li>
+                  <Link
+                    to="/pdf-summariser"
+                    className={`nav-link ${location.pathname === '/pdf-summariser' ? 'active' : ''}`}
+                    onClick={closeMenu}
+                  >
+                    PDF Summariser
+                  </Link>
+                </li>
+                <li>
                   <Link 
                     to="/contact" 
                     className={`nav-link ${location.pathname === '/contact' ? 'active' : ''}`}
@@ -116,6 +125,7 @@ function App() {
               } 
             />
             <Route path="/legal-advice" element={<LegalQuery />} />
+            <Route path="/pdf-summariser" element={<LegalQuery />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
@@ -159,6 +169,7 @@ function App() {
               <h3>Quick Links</h3>
               <ul>
                 <li><Link to="/legal-advice">Get Advice</Link></li>
+                <li><Link to="/pdf-summariser">PDF Summariser</Link></li>
                 <li><Link to="/contact">Contact</Link></li>
                 <li><Link to="/faq">FAQ</Link></li>
               </ul>
