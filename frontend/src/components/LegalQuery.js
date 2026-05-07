@@ -1498,6 +1498,7 @@ function LegalQuery() {
   const [backendStatus, setBackendStatus] = useState(null);
   const [docFile, setDocFile] = useState(null);
   const [docLoading, setDocLoading] = useState(false);
+  const [domainOverride, setDomainOverride] = useState('auto');
 
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -1537,7 +1538,7 @@ function LegalQuery() {
       const response = await fetch('http://127.0.0.1:5555/legal-help', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: currentQuery, chat_history: historyForAPI }),
+        body: JSON.stringify({ query: currentQuery, chat_history: historyForAPI, domain: domainOverride }),
       });
 
       const data = await response.json();
@@ -1755,6 +1756,23 @@ function LegalQuery() {
         {!isDocumentMode && (
           <form onSubmit={handleSubmit} className="query-form">
             <div className="lq-input-bar">
+              <div className="lq-domain-select-wrapper">
+                <select 
+                  className="lq-domain-select"
+                  value={domainOverride}
+                  onChange={(e) => setDomainOverride(e.target.value)}
+                  disabled={loading}
+                  title="Select Legal Domain Override"
+                >
+                  <option value="auto">Auto-detect Domain</option>
+                  <option value="constitutional">Constitutional Law</option>
+                  <option value="labour">Labour & Employment</option>
+                  <option value="family">Family & Divorce</option>
+                  <option value="property">Property & Tenant</option>
+                  <option value="consumer">Consumer Protection</option>
+                  <option value="compliance">Business Compliance</option>
+                </select>
+              </div>
               <textarea
                 ref={inputRef}
                 id="legal-query-input"

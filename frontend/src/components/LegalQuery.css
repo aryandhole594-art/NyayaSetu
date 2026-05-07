@@ -1616,12 +1616,59 @@
 
 .lq-input-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   padding: 10px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  align-items: center;
+}
+
+.lq-domain-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.lq-domain-select {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: var(--lq-cyan);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px 32px 8px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 160px;
+}
+
+.lq-domain-select:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(45, 212, 247, 0.3);
+}
+
+.lq-domain-select:focus {
+  outline: none;
+  border-color: var(--lq-cyan);
+  box-shadow: 0 0 0 2px rgba(45, 212, 247, 0.2);
+}
+
+.lq-domain-select option {
+  background: #111827;
+  color: #fff;
+}
+
+.lq-domain-select-wrapper::after {
+  content: "▼";
+  font-size: 0.6rem;
+  color: var(--lq-text-soft);
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
 }
 
 .lq-input-bar textarea {
@@ -1684,7 +1731,7 @@
 }
 
 .query-compose.is-collapsed .lq-input-bar {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 .query-compose.is-collapsed .lq-input-bar textarea {

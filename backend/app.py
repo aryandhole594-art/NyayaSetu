@@ -606,12 +606,22 @@ def legal_help():
             chat_history_text += f"{role}: {msg.get('text', '')[:500]}\n\n"
 
     # 1. Domain-aware retrieval
-    classification = situation_classifier(query)
-    domain_filter = classification["domain"]
-    if domain_filter is not None:
-        print(f"Detected domain: {domain_filter} (confidence: {classification['confidence']}) — matched: {classification['matched_keywords']}")
+    domain_override = data.get("domain")
+    if domain_override and domain_override != "auto":
+        domain_filter = domain_override
+        classification = {
+            "domain": domain_override,
+            "confidence": 100,
+            "matched_keywords": ["manual override"]
+        }
+        print(f"Manual domain override: {domain_filter}")
     else:
-        print("No specific domain detected — searching all documents")
+        classification = situation_classifier(query)
+        domain_filter = classification["domain"]
+        if domain_filter is not None:
+            print(f"Detected domain: {domain_filter} (confidence: {classification['confidence']}) — matched: {classification['matched_keywords']}")
+        else:
+            print("No specific domain detected — searching all documents")
 
     try:
         chunks = rag_index.retrieve(query, top_k=5, domain_filter=domain_filter)
