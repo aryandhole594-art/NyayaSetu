@@ -272,6 +272,28 @@ function StructuredPanel({ structured, urgency, result, onFollowup }) {
         </section>
       </div>
 
+      {structured.compliance_checklist?.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Compliance Checklist</h4>
+            <span className="section-caption">Requirements based on business type and employee count</span>
+          </div>
+          <div className="checklist-grid">
+            {structured.compliance_checklist.map((item, i) => (
+              <div key={`${item.act}-${i}`} className={`check-card ${item.status || ''}`} style={{ borderColor: item.status === 'applicable' ? 'var(--lq-success)' : 'var(--lq-amber)' }}>
+                <strong>{item.status_symbol || '-'} {item.act}</strong>
+                <p style={{ marginTop: '8px', color: 'var(--lq-text-soft)' }}>{item.requirement_summary}</p>
+                {item.sources?.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <span className="meta-chip" style={{ fontSize: '0.75rem' }}>Sources: {item.sources.join(', ')}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="brief-card">
         <div className="section-heading">
           <h4>Action Timeline</h4>
@@ -623,6 +645,7 @@ function ResultPanel({ result, onFollowup }) {
     { id: 'rights', label: 'Rights', count: result.your_rights?.length, note: 'Rights triggered by the facts' },
     { id: 'steps', label: 'Next Steps', count: result.next_steps?.length, note: 'Practical actions to take' },
     { id: 'sources', label: 'Source Sections', count: result.retrieved_sections?.length, note: 'Retrieved constitutional text' },
+    { id: 'explain', label: 'Explainability', count: null, note: 'Domain detection and insights' },
   ];
 
   const activeTabMeta = tabs.find(tab => tab.id === activeTab) || tabs[0];
@@ -797,6 +820,62 @@ function ResultPanel({ result, onFollowup }) {
                     <SectionCard key={`${s.title}-${i}`} section={s} index={i} />
                   ))}
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'explain' && result.explainability && (
+              <div className="tab-pane">
+                <p className="tab-intro">Insights into how the AI selected the legal corpus and retrieved sections.</p>
+                
+                <div className="brief-card">
+                  <div className="section-heading">
+                    <h4>Situation-to-Law Mapper</h4>
+                    <span className="section-caption">Automatic domain selection</span>
+                  </div>
+                  <div className="snapshot-table-wrap">
+                    <table className="snapshot-table">
+                      <tbody>
+                        <tr>
+                          <th>Detected Domain</th>
+                          <td><strong>{result.explainability.detected_domain || 'Unknown'}</strong></td>
+                        </tr>
+                        <tr>
+                          <th>Confidence</th>
+                          <td>{result.explainability.confidence || 'N/A'}%</td>
+                        </tr>
+                        <tr>
+                          <th>Matched Keywords</th>
+                          <td>{(result.explainability.matched_keywords || []).join(', ') || 'None'}</td>
+                        </tr>
+                        <tr>
+                          <th>Explanation</th>
+                          <td>{result.explainability.short_explanation}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="brief-card" style={{ marginTop: '20px' }}>
+                  <div className="section-heading">
+                    <h4>Corpus Retrieval</h4>
+                    <span className="section-caption">Documents sourced for this query</span>
+                  </div>
+                  <div className="pill-list">
+                    {result.explainability.source_documents?.map((doc, i) => (
+                      <div key={i} className="info-pill">{doc}</div>
+                    ))}
+                  </div>
+                  <p style={{ marginTop: '10px', color: 'var(--lq-text-soft)', fontSize: '0.9rem' }}>
+                    Number of chunks used: {result.explainability.number_of_chunks_used}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'explain' && !result.explainability && (
+              <div className="tab-pane">
+                <p className="empty-state">No explainability insights available for this query.</p>
               </div>
             )}
           </div>

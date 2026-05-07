@@ -66,6 +66,14 @@ def expand_query(query: str) -> list[str]:
     return list(set(expanded))
 
 
+def _contains_signal(text: str, signal: str) -> bool:
+    """Match multi-word signals by phrase and short tokens by word boundary."""
+    signal = signal.lower()
+    if " " in signal or "-" in signal:
+        return signal in text
+    return re.search(rf"\b{re.escape(signal)}\b", text) is not None
+
+
 # ────────────────────────────────────────────────
 # Corpus indexing
 # ────────────────────────────────────────────────
@@ -88,12 +96,23 @@ class HybridRAGIndex:
 
     # ── Build ────────────────────────────────────
 
-    def build(self, text: str, chunk_size: int = 2000, overlap: int = 400):
+    def build(
+        self,
+        text: str,
+        chunk_size: int = 2000,
+        overlap: int = 400,
+        domain: str = None,
+        source: str = None,
+        append: bool = False,
+    ):
         """
-        Split constitution text into overlapping chunks, extract article titles,
-        and build BM25 + TF-IDF index.
+        Split text into overlapping chunks, tag them, and build BM25 + TF-IDF.
+
+        By default this replaces the current index. Use append=True when loading
+        additional tagged documents into the same retriever.
         """
-        self.chunks = []
+        if not append:
+            self.chunks = []
 
         # Skip the table of contents if present by starting from the last PREAMBLE
         # (the first PREAMBLE usually appears in the contents section).
@@ -117,6 +136,7 @@ class HybridRAGIndex:
                 if seg.strip():
                     raw_chunks.append(seg)
 
+        start_id = len(self.chunks)
         for i, chunk in enumerate(raw_chunks):
             chunk = chunk.strip()
             if not chunk:
@@ -137,20 +157,26 @@ class HybridRAGIndex:
                     if head:
                         if re.search(r"\bSCHEDULE\b", chunk[:120], flags=re.IGNORECASE):
                             title = f"Schedule item {num} - {head}"
+                        elif domain and domain != "general":
+                            title = f"Section {num} - {head}"
                         else:
                             title = f"Article {num} - {head}"
                     else:
-                        title = f"Article {num}"
+                        title = f"Section {num}" if domain and domain != "general" else f"Article {num}"
                 else:
                     title = f"Section {i+1}"
 
             tokens = tokenize(chunk)
             self.chunks.append({
-                "id": i,
+                "id": start_id + i,
                 "title": title,
                 "text": chunk,
                 "tokens": tokens,
                 "tf": Counter(tokens),
+                "metadata": {
+                    "domain": domain if domain else "general",
+                    "source": source if source else "Constitution of India" if domain in (None, "general") else domain,
+                },
             })
 
         # Compute IDF
@@ -206,7 +232,7 @@ class HybridRAGIndex:
             return 0.0
         return dot / (math.sqrt(q_norm) * math.sqrt(d_norm))
 
-    def retrieve(self, query: str, top_k: int = 5) -> list[dict]:
+    def retrieve(self, query: str, top_k: int = 5, domain_filter: str = None) -> list[dict]:
         """
         Retrieve top-k chunks using hybrid BM25 + TF-IDF + title boost.
         Returns list of {title, text, score, article_numbers}.
@@ -218,8 +244,13 @@ class HybridRAGIndex:
         if not query_tokens:
             query_tokens = tokenize(query)
 
+        candidate_chunks = self.chunks
+        if domain_filter:
+            candidate_chunks = [chunk for chunk in self.chunks if chunk.get("metadata", {}).get("domain") == domain_filter]
+            print(f"Using domain filter: {domain_filter}")
+
         scored = []
-        for chunk in self.chunks:
+        for chunk in candidate_chunks:
             bm25 = self.bm25_score(query_tokens, chunk)
             cosine = self.tfidf_cosine(query_tokens, chunk)
 
@@ -255,12 +286,14 @@ class HybridRAGIndex:
         for entry in scored[:top_k]:
             chunk = entry["chunk"]
             article_nums = re.findall(r'(?i)Article\s+(\d+[A-Z]?)', chunk["text"])
-            article_nums += re.findall(r'(?m)^(?:\d+\[)?(\d{1,3}[A-Z]?)\.', chunk["text"])
+            if chunk.get("metadata", {}).get("domain") == "general":
+                article_nums += re.findall(r'(?m)^(?:\d+\[)?(\d{1,3}[A-Z]?)\.', chunk["text"])
             results.append({
                 "title": chunk["title"],
                 "text": chunk["text"],
                 "score": round(entry["score"], 3),
                 "article_numbers": list(dict.fromkeys(article_nums))[:5],  # deduplicate
+                "metadata": chunk.get("metadata", {}),
                 "score_breakdown": {
                     "bm25": round(entry["bm25"], 3),
                     "cosine": round(entry["cosine"], 3),
@@ -270,6 +303,21 @@ class HybridRAGIndex:
                 },
             })
         return results
+
+
+def BuildHybridIndex(
+    text: str,
+    chunk_size: int = 2000,
+    overlap: int = 400,
+    domain: str = None,
+    source: str = None,
+):
+    """
+    Wrapper for corpus loading that builds and returns a standalone index.
+    """
+    index = HybridRAGIndex()
+    index.build(text, chunk_size=chunk_size, overlap=overlap, domain=domain, source=source)
+    return index
 
 
 # ────────────────────────────────────────────────
@@ -307,7 +355,7 @@ def extract_legal_keywords(query: str, retrieved_chunks: list[dict]) -> list[str
     combined = (query + " " + " ".join(c["text"] for c in retrieved_chunks)).lower()
     found = []
     for topic, signals in LEGAL_KEYWORDS_MAP.items():
-        if any(s.lower() in combined for s in signals):
+        if any(_contains_signal(combined, s.lower()) for s in signals):
             found.append(topic)
     return found[:6]  # cap at 6
 
@@ -447,7 +495,7 @@ def get_rights_and_steps(query: str) -> tuple[list[str], list[str]]:
 
     matched_categories = []
     for cat, signals in category_map.items():
-        if any(s in q for s in signals):
+        if any(_contains_signal(q, s) for s in signals):
             matched_categories.append(cat)
 
     if not matched_categories:

@@ -3,17 +3,29 @@ from flask_cors import CORS
 import PyPDF2
 import re
 import os
+import sys
 import json
 import socket
 import urllib.request
 import urllib.error
 from dotenv import load_dotenv
 from config import load_config
+from comparison_explainer import build_comparison_response, is_comparison_query
 from rag_engine import (
     HybridRAGIndex,
     extract_legal_keywords,
     get_rights_and_steps,
     assess_urgency,
+)
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from rights_module.situation_classifier import situation_classifier
+from rights_module.rights_handler import handle_rights_query
+from rights_module.corpus_loader import load_legal_corpus
+from rights_module.compliance_checker import (
+    parse_business_input,
+    generate_compliance_checklist,
+    format_checklist_output,
 )
 
 load_dotenv()
@@ -81,203 +93,42 @@ def build_index():
     if INDEX_BUILD_LOCK:
         return
     INDEX_BUILD_LOCK = True
-    if not os.path.exists(CONSTITUTION_TEXT_PATH):
-        save_constitution_text()
-    with open(CONSTITUTION_TEXT_PATH, "r", encoding="utf-8") as f:
-        text = f.read()
-    rag_index.build(text, chunk_size=2000, overlap=400)
+    constitution_pdf_path = "static/constitution.pdf"
+    if os.path.exists(constitution_pdf_path):
+        if not os.path.exists(CONSTITUTION_TEXT_PATH):
+            save_constitution_text()
+        with open(CONSTITUTION_TEXT_PATH, "r", encoding="utf-8") as f:
+            text = f.read()
+        rag_index.build(text, chunk_size=2000, overlap=400, domain="general")
+    else:
+        print("[WARN] Constitution PDF not found at static/constitution.pdf, skipping constitution loading.")
 
 try:
     build_index()
+    load_legal_corpus(os.path.join(os.path.dirname(__file__), "..", "corpus"), rag_index.build)
 except Exception as e:
     print(f"[ERROR] Index build failed: {e}")
 
 
 # ── Gemini-powered analysis ──────────────────────────────────
-def build_prompt(query: str, context_chunks: list, chat_history_text: str, provider: str = "generic") -> str:
-    context = "\n\n".join(
-        f"[{c['title']}]\n{c['text'][:1200]}" for c in context_chunks
-    )
-    if provider == "ollama":
-        template = """You are an expert Legal AI Assistant specializing in Indian Constitutional Law.
-Your task is to analyze the user's legal scenario and produce a STRICT JSON response.
+def build_prompt(query: str, context_chunks: list, chat_history_text: str, provider: str = "generic", domain: str = "unknown") -> str:
+    # Strict RAG grounding: always require context_chunks, enforce template
+    if not context_chunks:
+        print(f"[DEBUG] build_prompt called with no retrieved chunks | chunks_retrieved=0 | top_chunk_text='' | domain_used={domain}")
+        return "No relevant legal information found"
 
-CONSTITUTIONAL CONTEXT (from RAG retrieval):
-{context}
+    print(f"[DEBUG] build_prompt | chunks_retrieved={len(context_chunks)} | top_chunk_text={context_chunks[0].get('text', '').replace(chr(10), ' ')!r} | domain_used={domain}")
 
-CONVERSATION HISTORY:
-{chat_history}
-
-USER'S SCENARIO:
-{query}
-
-INSTRUCTIONS:
-- Analyze the scenario in plain, simple language that a common person can understand.
-- Ground your response in the constitutional context provided. Do NOT hallucinate laws.
-- Be concise. Keep every string short and every list to at most 3 items.
-- Return JSON only. No markdown, no code fences, no explanation before or after JSON.
-- Choose one single value for `meta.domain`.
-- If a field is unknown, use an empty string or empty array.
-- Ensure the final character of your answer is `}}`.
-
-RESPOND WITH ONLY THIS JSON SHAPE:
-{{
-  "meta": {{
-    "domain": "constitutional",
-    "case_type": "Short case type tag",
-    "confidence": 0,
-    "in_scope": true,
-    "ai_powered": true,
-    "llm_provider": "ollama"
-  }},
-  "analysis": "2-3 short paragraphs",
-  "key_points": ["Point 1", "Point 2", "Point 3"],
-  "summary": {{
-    "one_line": "One-line summary",
-    "signal": "Act quickly"
-  }},
-  "plain_words": {{
-    "short_explanation": "2-4 short sentences in plain words"
-  }},
-  "parties": {{
-    "complainant": "Who is affected",
-    "opposite_party": "Who is responsible",
-    "subject": "What the issue is about",
-    "forum": "Likely forum or authority"
-  }},
-  "applicable_laws": [
-    {{
-      "name": "Constitution of India",
-      "type": "primary",
-      "why_it_applies": "Short reason",
-      "citations": ["Article 21"]
-    }}
-  ],
-  "rights_vs_limits": {{
-    "rights": ["Right 1", "Right 2"],
-    "limits": ["Limit 1", "Limit 2"]
-  }},
-  "steps": [
-    {{
-      "step_no": 1,
-      "timeframe": "Day 0",
-      "action": "Action",
-      "why": "Why this helps",
-      "urgency_tag": "Do immediately"
-    }}
-  ],
-  "evidence_checklist": ["Document 1", "Document 2"],
-  "do_and_avoid": {{
-    "do": ["Do this"],
-    "avoid": ["Avoid this"]
-  }},
-  "followups": ["Draft a notice"],
-  "disclaimer": "Short legal disclaimer"
-}}"""
-    else:
-        template = """You are an expert Legal AI Assistant specializing in Indian Constitutional Law.
-Your task is to analyze the user's legal scenario and produce a STRICT JSON response.
-
-CONSTITUTIONAL CONTEXT (from RAG retrieval):
-{context}
-
-CONVERSATION HISTORY:
-{chat_history}
-
-USER'S SCENARIO:
-{query}
-
-INSTRUCTIONS:
-- Analyze the scenario in plain, simple language that a common person can understand.
-- Ground your response in the constitutional context provided. Do NOT hallucinate laws.
-- If the user's scenario is a follow-up, be conversational and contextual.
-- Keep the output concise to avoid truncation:
-    - Analysis: max 3 short paragraphs, 2-3 sentences each.
-    - Lists: max 3-4 items; use empty arrays if unknown.
-    - Strings: keep under 160 characters where possible.
-    - Choose a single value for `meta.domain` (do not list options).
-- Return valid JSON only and ensure the JSON ends with a closing `}}`.
-
-RESPOND ONLY WITH VALID JSON in this exact structure (no markdown, no code fences):
-{{
-    "meta": {{
-        "domain": "constitutional | consumer | labour | property | family | other",
-        "case_type": "Short case type tag",
-        "confidence": 0,
-        "in_scope": true,
-        "ai_powered": true,
-        "llm_provider": "ollama | gemini"
-    }},
-    "analysis": "Detailed 5-8 paragraph narrative analysis",
-    "key_points": ["Point 1", "Point 2", "Point 3", "Point 4", "Point 5"],
-    "summary": {{
-        "one_line": "One-line summary",
-        "signal": "Act quickly | Low urgency | Consult a lawyer"
-    }},
-    "plain_words": {{
-        "short_explanation": "2-4 sentences in plain words"
-    }},
-    "parties": {{
-        "complainant": "Who is affected",
-        "opposite_party": "Who is responsible",
-        "subject": "What the issue is about",
-        "forum": "Likely forum / authority"
-    }},
-    "applicable_laws": [
-        {{"name": "Law name", "type": "primary | supporting", "why_it_applies": "Short reason", "citations": ["Article 21", "Section 12"]}}
-    ],
-    "rights_vs_limits": {{
-        "rights": ["Right 1", "Right 2"],
-        "limits": ["Limit 1", "Limit 2"]
-    }},
-    "steps": [
-        {{"step_no": 1, "timeframe": "Day 0", "action": "Action", "why": "Why this helps", "urgency_tag": "Do immediately"}}
-    ],
-    "forum_comparison": {{
-        "forums": ["Consumer Commission", "Civil Court", "Lok Adalat"],
-        "rows": [
-            {{"factor": "Filing fee", "values": ["₹200-₹2,000", "₹5,000-₹50,000+", "Free"]}}
-        ]
-    }},
-    "relief_spectrum": [
-        {{"label": "Refund", "range": "Full price", "likelihood": 80, "level": "high"}}
-    ],
-    "case_strength": [
-        {{"label": "Evidence", "score": 70, "note": "Receipts and complaint trail"}}
-    ],
-    "cost_benefit": {{
-        "invest": [
-            {{"item": "Filing fee", "amount": "₹200", "note": "CONFONET"}}
-        ],
-        "recover": [
-            {{"item": "Refund", "amount": "Full price", "note": "If granted"}}
-        ]
-    }},
-    "clause_risks": [
-        {{"clause": "Non-compete", "risk_level": "high", "issue": "Overbroad duration", "fix": "Limit to 12 months"}}
-    ],
-    "evidence_checklist": ["Document 1", "Document 2"],
-    "do_and_avoid": {{
-        "do": ["Do this"],
-        "avoid": ["Avoid this"]
-    }},
-    "misconceptions": [
-        {{"claim": "Myth", "truth": "True/False", "explanation": "Short clarification"}}
-    ],
-    "similar_cases": [
-        {{"court": "Court", "year": 2022, "case_name": "Case", "outcome": "Outcome", "similarity": "85%"}}
-    ],
-    "sources": {{
-        "corpus_used": "Constitution of India",
-        "chunks_retrieved": 0
-    }},
-    "followups": ["Draft a notice", "How to file online"],
-    "disclaimer": "Short legal disclaimer"
-}}"""
-    return template.format(
-        context=context,
-        chat_history=chat_history_text or "No previous conversation.",
-        query=query,
+    context = "\n\n".join(c.get('text', '').strip() for c in context_chunks)
+    return (
+        "You are a legal assistant.\n"
+        "Answer ONLY using the provided legal context.\n"
+        "Do NOT give general advice.\n"
+        "If the answer is not present, say: No relevant legal information found.\n\n"
+        "LEGAL CONTEXT:\n"
+        f"{context}\n\n"
+        "QUESTION:\n"
+        f"{query}"
     )
 
 
@@ -316,12 +167,12 @@ def parse_llm_json(raw: str) -> dict | None:
     return None
 
 
-def gemini_analysis(query: str, context_chunks: list, chat_history_text: str) -> dict | None:
+def gemini_analysis(query: str, context_chunks: list, chat_history_text: str, domain: str) -> dict | None:
     """Call Gemini and ask for a structured JSON response."""
     if not gemini_available or model is None:
         return None
 
-    prompt = build_prompt(query, context_chunks, chat_history_text, provider="gemini")
+    prompt = build_prompt(query, context_chunks, chat_history_text, provider="gemini", domain=domain)
 
     try:
         response = model.generate_content(
@@ -341,7 +192,7 @@ def gemini_analysis(query: str, context_chunks: list, chat_history_text: str) ->
         return None
 
 
-def ollama_analysis(query: str, context_chunks: list, chat_history_text: str) -> dict | None:
+def ollama_analysis(query: str, context_chunks: list, chat_history_text: str, domain: str) -> dict | None:
     """Call Ollama and ask for a structured JSON response."""
     url = OLLAMA_HOST.rstrip("/") + "/api/generate"
 
@@ -367,12 +218,12 @@ def ollama_analysis(query: str, context_chunks: list, chat_history_text: str) ->
             print(f"[WARN] Ollama JSON parse error. Raw: {raw[:300]}")
         return parsed
 
-    prompt = build_prompt(query, context_chunks, chat_history_text, provider="ollama")
+    prompt = build_prompt(query, context_chunks, chat_history_text, provider="ollama", domain=domain)
     try:
         return run_ollama(prompt, OLLAMA_NUM_PREDICT, OLLAMA_TIMEOUT)
     except (TimeoutError, socket.timeout):
         # Retry with a smaller prompt and shorter target output before falling back.
-        compact_prompt = build_prompt(query, context_chunks[:2], chat_history_text[-500:], provider="ollama")
+        compact_prompt = build_prompt(query, context_chunks[:2], chat_history_text[-500:], provider="ollama", domain=domain)
         compact_predict = min(OLLAMA_NUM_PREDICT, 450) if OLLAMA_NUM_PREDICT > 0 else 450
         try:
             print("[INFO] Ollama timed out; retrying with a compact prompt.")
@@ -391,12 +242,27 @@ def ollama_analysis(query: str, context_chunks: list, chat_history_text: str) ->
         return None
 
 
-def generate_answer(query: str, chunks: list, chat_history_text: str) -> dict | None:
+def generate_answer(query: str, chunks: list, chat_history_text: str, domain: str = "unknown") -> dict | str | None:
     """Route LLM generation based on config."""
+    # Strict RAG grounding: never call LLM if no chunks
+    if not chunks:
+        return "No relevant legal information found"
+
+    # Debug logging for RAG pipeline
+    print("[RAG DEBUG] Detected domain:", domain)
+    print("[RAG DEBUG] Number of chunks retrieved:", len(chunks))
+    if chunks:
+        print("[RAG DEBUG] Top chunk (first 300 chars):", chunks[0].get('text', '')[:300].replace('\n', ' '))
+
+    # Build prompt and print it before LLM call
+    prompt = build_prompt(query, chunks, chat_history_text, provider=LLM_PROVIDER, domain=domain)
+    print("[RAG DEBUG] Full prompt sent to LLM:\n" + prompt)
+
     if LLM_PROVIDER == "ollama":
-        return ollama_analysis(query, chunks, chat_history_text)
+        # ollama_analysis will rebuild the prompt, but for debug we print it here
+        return ollama_analysis(query, chunks, chat_history_text, domain)
     if LLM_PROVIDER == "gemini":
-        return gemini_analysis(query, chunks, chat_history_text)
+        return gemini_analysis(query, chunks, chat_history_text, domain)
     print(f"[WARN] Unknown llm_provider: {LLM_PROVIDER}")
     return None
 
@@ -422,19 +288,30 @@ def build_structured_fallback(query: str, legal_topics: list[str], rights: list[
     for c in chunks:
         article_nums.extend(c.get("article_numbers", []))
     article_nums = list(dict.fromkeys(article_nums))[:6]
+    sources = list(dict.fromkeys(
+        c.get("metadata", {}).get("source", "Retrieved legal corpus") for c in chunks
+    ))
+    corpus_used = ", ".join(sources) if sources else "Retrieved legal corpus"
 
     laws = []
-    if article_nums:
+    if article_nums and meta.get("domain") == "constitutional":
         laws.append({
             "name": "Constitution of India",
             "type": "primary",
             "why_it_applies": "Retrieved from constitutional context based on your query.",
             "citations": [f"Article {n}" for n in article_nums],
         })
+    elif sources:
+        laws.append({
+            "name": sources[0],
+            "type": "primary",
+            "why_it_applies": "Retrieved as the most relevant source for this domain-specific query.",
+            "citations": sources[:3],
+        })
 
     short_explanation = (
-        "This issue appears outside the current constitutional corpus. "
-        "I can provide general guidance, but specific citations may be unavailable."
+        f"The most relevant retrieved context came from {corpus_used}. "
+        "Review the source section and verify the exact legal position with a qualified lawyer."
     )
     if meta.get("in_scope"):
         short_explanation = (
@@ -486,7 +363,7 @@ def build_structured_fallback(query: str, legal_topics: list[str], rights: list[
         "misconceptions": [],
         "similar_cases": [],
         "sources": {
-            "corpus_used": "Constitution of India",
+            "corpus_used": corpus_used,
             "chunks_retrieved": len(chunks),
         },
         "followups": ["Draft a formal notice", "Prepare a complaint summary"],
@@ -503,9 +380,141 @@ def deep_merge(base: dict, update: dict) -> dict:
     return base
 
 
+def build_compliance_response(query: str, business_type: str, employee_count: int, checklist: list[dict]) -> dict:
+    """Build a frontend-compatible response for compliance monitor mode."""
+    answer = format_checklist_output(checklist, business_type, employee_count)
+    sources = list(dict.fromkeys(source for item in checklist for source in item.get("sources", [])))
+    complete_count = sum(1 for item in checklist if item.get("status") == "applicable")
+    total_count = len(checklist)
+
+    steps = [
+        {
+            "step_no": idx + 1,
+            "timeframe": "Review",
+            "action": f"{item.get('status_symbol', '-')} {item['act']}",
+            "why": item.get("requirement_summary", ""),
+            "urgency_tag": item.get("status", "needs_review"),
+        }
+        for idx, item in enumerate(checklist)
+    ]
+
+    summary = (
+        f"Compliance checklist prepared for {business_type.replace('_', ' ')} "
+        f"with {employee_count} employees."
+    )
+
+    return {
+        "query": query,
+        "ai_powered": False,
+        "urgency": {
+            "level": "STANDARD",
+            "color": "#10b981",
+            "message": "Compliance review checklist",
+        },
+        "case_type": "Compliance Monitor",
+        "summary": summary,
+        "analysis": answer,
+        "key_points": [
+            f"{total_count} applicable acts identified.",
+            f"{complete_count} acts have matching indexed source context.",
+            "Items marked with x need manual verification or additional corpus coverage.",
+        ],
+        "is_follow_up": False,
+        "legal_topics": ["business compliance", business_type.replace("_", " ")],
+        "articles_cited": [],
+        "your_rights": [],
+        "next_steps": [f"{item.get('status_symbol', '-')} {item['act']}: {item['requirement_summary']}" for item in checklist],
+        "retrieved_sections": [],
+        "structured": {
+            "meta": {
+                "domain": "compliance",
+                "case_type": "Compliance Monitor",
+                "confidence": 85,
+                "in_scope": True,
+                "ai_powered": False,
+                "llm_provider": LLM_PROVIDER,
+            },
+            "summary": {
+                "one_line": summary,
+                "signal": "Verify checklist items",
+            },
+            "plain_words": {
+                "short_explanation": "The compliance monitor maps the business type and employee count to likely applicable acts, then retrieves matching indexed sections where available.",
+            },
+            "parties": {
+                "complainant": "Business owner",
+                "opposite_party": "Regulators / authorities",
+                "subject": query,
+                "forum": "Relevant labour, municipal, food safety, and consumer authorities",
+            },
+            "applicable_laws": [
+                {
+                    "name": item["act"],
+                    "type": "compliance",
+                    "why_it_applies": item.get("requirement_summary", ""),
+                    "citations": item.get("sources", []),
+                }
+                for item in checklist
+            ],
+            "rights_vs_limits": {
+                "rights": [],
+                "limits": [
+                    "This checklist identifies likely requirements; final applicability can depend on state rules, registrations, and exact business facts.",
+                ],
+            },
+            "steps": steps,
+            "evidence_checklist": [
+                "Employee count records",
+                "Wage register and salary slips",
+                "Business registration/license documents",
+                "Food safety registration if food is served",
+            ],
+            "do_and_avoid": {
+                "do": ["Verify each applicable act with current state rules", "Keep wage and attendance records updated"],
+                "avoid": ["Treating this checklist as a final legal audit"],
+            },
+            "sources": {
+                "corpus_used": ", ".join(sources) if sources else "No matching indexed source found",
+                "chunks_retrieved": complete_count,
+            },
+            "compliance_checklist": checklist,
+            "followups": ["Show labour compliance only", "Explain Shops Act requirements"],
+            "disclaimer": "This is an informational compliance checklist, not legal advice.",
+        },
+        "explainability": {
+            "detected_domain": "compliance",
+            "confidence": "high",
+            "matched_keywords": [business_type, str(employee_count)],
+            "number_of_chunks_used": complete_count,
+            "source_documents": sources,
+            "short_explanation": "Business type and employee count triggered compliance monitor mode.",
+            "retrieval_details": [
+                {
+                    "act": item["act"],
+                    "domain": item.get("domain"),
+                    "status": item.get("status"),
+                    "sources": item.get("sources", []),
+                }
+                for item in checklist
+            ],
+        },
+        "disclaimer": "This is an informational compliance checklist, not legal advice.",
+    }
+
+
 # ── Fallback analysis (no Gemini) ────────────────────────────
 def fallback_analysis(query: str, chunks: list) -> dict:
     """Produce a structured response purely from RAG-retrieved chunks."""
+    corpus_used = "Retrieved legal corpus"
+    if chunks:
+        sources = [
+            c.get("metadata", {}).get("source")
+            for c in chunks
+            if c.get("metadata", {}).get("source")
+        ]
+        if sources:
+            corpus_used = ", ".join(list(dict.fromkeys(sources))[:3])
+
     article_nums = []
     for c in chunks:
         article_nums.extend(c.get("article_numbers", []))
@@ -538,11 +547,11 @@ def fallback_analysis(query: str, chunks: list) -> dict:
                 key_points.append(sent[:200])
 
     return {
-        "summary": f"Based on your query about \"{query[:100]}\", relevant sections of the Constitution of India have been retrieved. AI-powered analysis is temporarily unavailable, but key constitutional provisions are shown below.",
-        "analysis": "The following constitutional provisions are relevant to your situation. Please review the 'Articles' tab for the exact text from the Constitution of India. We recommend consulting a qualified legal professional for personalized advice based on these provisions.",
+        "summary": f"Based on your query about \"{query[:100]}\", relevant sections from {corpus_used} have been retrieved. AI-powered analysis is temporarily unavailable, but grounded source text is shown below.",
+        "analysis": f"The following retrieved legal sections from {corpus_used} are relevant to your situation. Please review the source text and consult a qualified legal professional for advice on your facts.",
         "key_points": key_points[:5] if key_points else ["Please review the retrieved constitutional articles below."],
         "applicable_articles": applicable_articles[:5],
-        "case_type": "Constitutional Query",
+        "case_type": "Legal Corpus Query",
         "is_follow_up": False,
         "fallback": True,
     }
@@ -559,6 +568,23 @@ def legal_help():
     if not query:
         return jsonify({"error": "Query cannot be empty"}), 400
 
+    if is_comparison_query(query):
+        return jsonify(build_comparison_response(query))
+
+    business_info = parse_business_input(query)
+    if business_info.get("business_type") and business_info.get("employee_count") is not None:
+        checklist = generate_compliance_checklist(
+            business_info["business_type"],
+            business_info["employee_count"],
+            rag_index.retrieve,
+        )
+        return jsonify(build_compliance_response(
+            query,
+            business_info["business_type"],
+            business_info["employee_count"],
+            checklist,
+        ))
+
     chat_history_list = data.get("chat_history", [])
     chat_history_text = ""
     if chat_history_list:
@@ -566,9 +592,16 @@ def legal_help():
             role = "User" if msg.get("role") == "user" else "Assistant"
             chat_history_text += f"{role}: {msg.get('text', '')[:500]}\n\n"
 
-    # 1. RAG retrieval
+    # 1. Domain-aware retrieval
+    classification = situation_classifier(query)
+    domain_filter = classification["domain"]
+    if domain_filter is not None:
+        print(f"Detected domain: {domain_filter} (confidence: {classification['confidence']}) — matched: {classification['matched_keywords']}")
+    else:
+        print("No specific domain detected — searching all documents")
+
     try:
-        chunks = rag_index.retrieve(query, top_k=5)
+        chunks = rag_index.retrieve(query, top_k=5, domain_filter=domain_filter)
     except Exception as e:
         print(f"[ERROR] Retrieval failed: {e}")
         chunks = []
@@ -582,7 +615,7 @@ def legal_help():
     top_matched = 0
     if chunks and chunks[0].get("score_breakdown"):
         top_matched = len(chunks[0]["score_breakdown"].get("matched_terms", []))
-    domain = infer_domain(query, legal_keywords)
+    domain = domain_filter or infer_domain(query, legal_keywords)
     in_scope = domain == "constitutional" and top_score >= 8 and top_matched >= 2
     confidence = 25
     if in_scope:
@@ -594,9 +627,24 @@ def legal_help():
 
     # 3. AI generation (provider or fallback)
     ai_result = None
-    if in_scope:
-        ai_result = generate_answer(query, chunks, chat_history_text)
-    if ai_result is None:
+    # Strict RAG grounding: never call LLM if no chunks, always use prompt template
+    if chunks:
+        ai_result = generate_answer(query, chunks, chat_history_text, domain)
+    else:
+        ai_result = "No relevant legal information found"
+
+    if isinstance(ai_result, str):
+        if ai_result == "No relevant legal information found":
+            ai_powered = False
+        else:
+            ai_powered = False
+        ai_result = {
+            "analysis": ai_result,
+            "summary": ai_result,
+            "key_points": [],
+            "is_follow_up": False,
+        }
+    elif ai_result is None:
         ai_result = fallback_analysis(query, chunks)
         ai_powered = False
     else:
@@ -613,6 +661,7 @@ def legal_help():
             "score": c["score"],
             "article_numbers": c["article_numbers"],
             "score_breakdown": c.get("score_breakdown"),
+            "metadata": c.get("metadata", {}),
         }
         for c in chunks
     ]
@@ -663,7 +712,34 @@ def legal_help():
                 })
         article_refs = derived
 
-    return jsonify({
+    # Explainability metadata
+
+    retrieval_details = []
+    for c in chunks:
+        score_breakdown = c.get("score_breakdown", {})
+        retrieval_details.append({
+            "text_preview": c.get("text", "")[:150],
+            "domain": c.get("metadata", {}).get("domain", "unknown"),
+            "score": {
+                "bm25": score_breakdown.get("bm25"),
+                "cosine": score_breakdown.get("cosine"),
+                "hybrid": score_breakdown.get("hybrid"),
+            }
+        })
+
+    explainability = {
+        "detected_domain": classification.get("domain"),
+        "confidence": classification.get("confidence"),
+        "matched_keywords": classification.get("matched_keywords", []),
+        "number_of_chunks_used": len(chunks),
+        "source_documents": list(dict.fromkeys(
+            c.get("metadata", {}).get("source", "Unknown source") for c in chunks
+        )),
+        "short_explanation": f"Domain '{classification.get('domain')}' was selected because the following keywords matched: {', '.join(classification.get('matched_keywords', [])) or 'none found'}.",
+        "retrieval_details": retrieval_details,
+    }
+
+    response = {
         "query": query,
         "ai_powered": ai_powered,
         "urgency": urgency,
@@ -678,18 +754,59 @@ def legal_help():
         "next_steps": next_steps,
         "retrieved_sections": retrieved_sections,
         "structured": structured,
+        "explainability": explainability,
         "disclaimer": "This is AI-generated legal information for educational purposes only. It does not constitute legal advice. Please consult a qualified lawyer for your specific situation.",
-    })
+    }
+    return jsonify(response)
+
+
+def test_rights_module():
+    """
+    Run basic integration tests for rights module retrieval modes.
+    """
+    corpus_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "corpus"))
+    load_legal_corpus(corpus_path, rag_index.build)
+
+    tests = [
+        {
+            "mode": "situation",
+            "query": "My employer fired me without notice and hasn't paid my last month salary",
+        },
+        {
+            "mode": "compliance",
+            "query": "I run a restaurant with 12 employees in Maharashtra",
+        },
+        {
+            "mode": "direct",
+            "query": "What are my fundamental rights under the Indian constitution?",
+        },
+    ]
+
+    for test in tests:
+        result = handle_rights_query(test["query"], rag_index.retrieve, mode=test["mode"])
+        preview = result["answer"] if result["answer"] else ""
+        print("Query:", test["query"])
+        print("Mode used:", result.get("mode_used"))
+        print("Domain detected:", result.get("domain_detected"))
+        safe_preview = preview[:300].replace("\n", " ").encode('ascii', 'replace').decode('ascii')
+        print("Output preview:", safe_preview)
+        print("-" * 80)
 
 
 @app.route('/health', methods=['GET'])
 def health():
+    domain_counts = {}
+    for chunk in rag_index.chunks:
+        domain = chunk.get("metadata", {}).get("domain", "unknown")
+        domain_counts[domain] = domain_counts.get(domain, 0) + 1
+
     return jsonify({
         "status": "ok",
         "gemini_available": gemini_available,
         "ai_available": (LLM_PROVIDER == "ollama") or gemini_available,
         "llm_provider": LLM_PROVIDER,
         "index_chunks": len(rag_index.chunks),
+        "domain_counts": domain_counts,
     })
 
 

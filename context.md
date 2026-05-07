@@ -1,0 +1,20 @@
+Member 1 — Core RAG + Local LLM (start here, Week 1 Day 1)
+This is the most critical path. Everything else depends on the RAG engine working.
+Week 1: Install Ollama (curl https://ollama.com/install.sh | sh), pull phi3 (2.3GB, fastest) and llama3 (4.7GB, better quality). Add a config.yaml file with a flag llm_provider: "ollama" | "gemini". Wrap your existing Gemini call in a function generate_answer(prompt, chunks) that routes based on config. That's the local LLM done — one afternoon of work.
+Week 2-3: The explainability panel is just surfacing data you already compute. After scoring each chunk, instead of discarding the intermediate scores, return them: {"bm25": 3.2, "cosine": 0.87, "title_boost": 4.0, "hybrid": 6.6, "matched_terms": ["rights", "arrest"]}. The frontend (M5) renders this as a breakdown bar per result.
+Week 4-5: The benchmark dataset is 50 questions written manually. Format: {"question": "Can police detain me without an FIR?", "correct_article": "Article 22", "correct_section": "..."}. Run your retrieval on all 50, check if correct article appears in top-5. That percentage is your Recall@5 number. Use ragas pip package for faithfulness scoring.
+
+Member 2 — Document Intelligence (parallel to M1 from Week 1)
+Week 1: pip install pymupdf pytesseract pillow. Write a single function extract_text(file) -> str that handles PDF (PyMuPDF), scanned PDF (Tesseract OCR), and image (Tesseract directly). This function feeds into the existing BuildHybridIndex — the uploaded document becomes an additional corpus on top of the Constitution.
+Week 2-3: Contract analyzer. Write a list of ~30 risky clause patterns (non-compete beyond 1 year, unilateral termination without notice, IP assignment without compensation, mandatory arbitration in different state). Run regex + RAG retrieval to flag these. No ML needed — pattern matching + constitutional grounding is enough and is actually more explainable.
+Week 4: Court notice decoder. User pastes notice text → extract deadline dates (regex), identify the legal section cited → RAG retrieve what that section means → generate plain English explanation of "what you must do and by when."
+
+Member 3 — Rights Modules (Week 1: corpus, Week 2+: features)
+Week 1 is entirely corpus preparation. Download these public domain PDFs: The Code of Wages Act 2019, Shops and Establishments Act (your state), Consumer Protection Act 2019, Protection of Women from Domestic Violence Act 2005. Run them through BuildHybridIndex with a domain tag per document. The domain mode switcher is just a filter on which tagged documents to retrieve from.
+Week 2-3: The situation-to-law mapper is your most impressive feature. Build a situation_classifier(text) -> domain function using keyword matching (if "fired", "termination", "salary" → labour; if "landlord", "deposit", "eviction" → tenant; etc.). This auto-selects the right domain corpus before retrieval. Takes one day to build, looks very impressive in a demo.
+Week 4: Compliance monitor. Build a lookup table: {business_type: [applicable_acts]}. "Restaurant with 10 employees" → [Minimum Wages Act, ESI Act, PF Act, FSSAI, Shops Act]. Retrieve relevant sections for each act. Output is a checklist with ✓/✗ per compliance requirement.
+
+Member 4 — Prediction + Evaluation (Week 1: collect corpus)
+Week 1 is the most important for you: download SC judgment PDFs from indiankanoon.org (they're public). You need at least 200-300 judgments indexed to make prediction meaningful. Write a scraper using requests + BeautifulSoup that downloads judgment PDFs by topic (bail, termination, fundamental rights).
+Week 2-3: Judgment prediction is retrieval, not ML. User describes their case → retrieve top-5 similar judgments → extract outcome (won/lost/partial) from judgment text using regex on phrases like "petition dismissed", "appeal allowed" → report the distribution. "3 of 5 similar cases were decided in favour of the petitioner." That's your prediction. Simple, honest, defensible.
+Week 4-5: RA
