@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Hero from './components/Hero';
 import LegalQuery from './components/LegalQuery';
+import JudgementPrediction from './components/JudgementPrediction';
+import NyayaDraft from './components/NyayaDraft';
 import ContactPage from './components/ContactPage';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfService from './components/TermsOfService';
 import FAQPage from './components/FAQPage';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
+import nyayaSetuLogo from './assets/nyayasetu-logo.svg';
 import './App.css';
 
 function App() {
@@ -53,8 +56,9 @@ function App() {
         
         <header className="app-header">
           <div className="header-container">
-            <Link to="/" className="app-logo" onClick={closeMenu} aria-label="LegalAI Home">
-              <span className="logo-text">NyayaSetu</span>
+            <Link to="/" className="app-logo" onClick={closeMenu} aria-label="NyayaSetu Home">
+              <img src={nyayaSetuLogo} alt="" className="brand-logo-image" aria-hidden="true" />
+              <span className="sr-only">NyayaSetu</span>
             </Link>
             
             <button 
@@ -63,7 +67,7 @@ function App() {
               aria-label="Toggle menu"
               aria-expanded={isMenuOpen}
             >
-              {isMenuOpen ? '✕' : '☰'}
+              {isMenuOpen ? 'Close' : 'Menu'}
             </button>
             
             <nav>
@@ -84,6 +88,24 @@ function App() {
                     onClick={closeMenu}
                   >
                     Get Advice
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/judgement-prediction"
+                    className={`nav-link ${location.pathname === '/judgement-prediction' ? 'active' : ''}`}
+                    onClick={closeMenu}
+                  >
+                    Judgement Predictor
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/nyayadraft"
+                    className={`nav-link ${location.pathname === '/nyayadraft' ? 'active' : ''}`}
+                    onClick={closeMenu}
+                  >
+                    NyayaDraft
                   </Link>
                 </li>
                 <li>
@@ -125,6 +147,8 @@ function App() {
               } 
             />
             <Route path="/legal-advice" element={<LegalQuery />} />
+            <Route path="/judgement-prediction" element={<JudgementPrediction />} />
+            <Route path="/nyayadraft" element={<NyayaDraft />} />
             <Route path="/pdf-summariser" element={<LegalQuery />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
@@ -190,7 +214,7 @@ function App() {
             </div>
           </div>
           <div className="footer-bottom">
-            <p>© {new Date().getFullYear()} LegalAI. All rights reserved.</p>
+            <p>(c) {new Date().getFullYear()} LegalAI. All rights reserved.</p>
           </div>
         </footer>
       </div>

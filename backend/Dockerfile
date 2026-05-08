@@ -20,4 +20,4 @@ WORKDIR /app/backend
 
 EXPOSE 5555
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5555", "--workers", "1", "--timeout", "240", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5555", "--workers", "2", "--worker-class", "gthread", "--threads", "4", "--timeout", "120", "app:app"]
