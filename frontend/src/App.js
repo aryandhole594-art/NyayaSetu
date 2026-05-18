@@ -57,8 +57,7 @@ function App() {
         <header className="app-header">
           <div className="header-container">
             <Link to="/" className="app-logo" onClick={closeMenu} aria-label="NyayaSetu Home">
-              <img src={nyayaSetuLogo} alt="" className="brand-logo-image" aria-hidden="true" />
-              <span className="sr-only">NyayaSetu</span>
+              <span className="brand-text">NyayaSetu</span>
             </Link>
             
             <button 
@@ -70,7 +69,7 @@ function App() {
               {isMenuOpen ? 'Close' : 'Menu'}
             </button>
             
-            <nav>
+            <nav className="app-nav">
               <ul className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
                 <li>
                   <Link 
@@ -126,11 +125,12 @@ function App() {
                     Contact
                   </Link>
                 </li>
-                <li className="nav-theme-toggle">
-                  <ThemeToggle />
-                </li>
               </ul>
             </nav>
+
+            <div className="header-actions">
+              <ThemeToggle />
+            </div>
           </div>
         </header>
         
