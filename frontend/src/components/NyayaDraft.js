@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import './NyayaDraft.css';
 
 const API_BASE = process.env.REACT_APP_API_BASE || '';
@@ -10,10 +9,10 @@ function NyayaDraft() {
   const [templateText, setTemplateText] = useState('');
   const [placeholders, setPlaceholders] = useState([]);
   const [values, setValues] = useState({});
+  const [showPreview, setShowPreview] = useState(false);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState('');
   const fileInputRef = useRef(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     loadTemplates();
@@ -79,6 +78,7 @@ function NyayaDraft() {
     const uniqueNames = names.length ? names : extractPlaceholders(text);
     setTemplateText(text);
     setPlaceholders(uniqueNames);
+    setShowPreview(false);
     setValues(previous => {
       const next = {};
       uniqueNames.forEach(name => {
@@ -93,6 +93,30 @@ function NyayaDraft() {
 
   const updateValue = (key, value) => {
     setValues(previous => ({ ...previous, [key]: value }));
+  };
+
+  const fillDemoValues = () => {
+    if (!placeholders.length) {
+      setStatus('Select a template with placeholders before loading a demo.');
+      return;
+    }
+
+    const demoValues = {};
+    placeholders.forEach((name, index) => {
+      demoValues[name] = demoValueFor(name, index);
+    });
+    setValues(demoValues);
+    setShowPreview(false);
+    setStatus('Demo details added. Click Preview to see the sample draft.');
+  };
+
+  const previewDocument = () => {
+    if (!templateText.trim()) {
+      setStatus('Select a template before previewing.');
+      return;
+    }
+    setShowPreview(true);
+    setStatus('Preview generated.');
   };
 
   const downloadDocx = async () => {
@@ -172,12 +196,16 @@ function NyayaDraft() {
               <span>NyayaDraft</span>
               <h1>Document drafting</h1>
             </div>
-            <button type="button" className="draft-help" onClick={() => navigate('/contact')}>
-              Need help?
-            </button>
           </div>
 
           <div className="draft-template-picker">
+            <div className="draft-intro">
+              <strong>How NyayaDraft works</strong>
+              <p>
+                Choose a legal template, fill each placeholder with case or party details,
+                preview the completed document, and download it as an editable DOCX draft.
+              </p>
+            </div>
             <label>
               <span>Template</span>
               <select
@@ -213,6 +241,21 @@ function NyayaDraft() {
               disabled={busy === 'sanitize'}
             >
               {busy === 'sanitize' ? 'Sanitizing...' : 'Upload PDF'}
+            </button>
+            <button
+              type="button"
+              className="draft-secondary"
+              onClick={fillDemoValues}
+              disabled={!placeholders.length}
+            >
+              Demo
+            </button>
+            <button
+              type="button"
+              onClick={previewDocument}
+              disabled={!templateText.trim()}
+            >
+              Preview
             </button>
             <button
               type="button"
@@ -265,8 +308,10 @@ function NyayaDraft() {
           </div>
           {status && <div className="draft-status">{status}</div>}
           <article className="draft-document">
-            {templateText.trim() ? renderPreview(previewText) : (
-              <p className="draft-document-empty">Your selected draft will appear here.</p>
+            {showPreview && templateText.trim() ? renderPreview(previewText) : (
+              <p className="draft-document-empty">
+                Fill the required fields and click Preview to see the final document here.
+              </p>
             )}
           </article>
         </section>
@@ -313,6 +358,40 @@ function replacePlaceholders(text, values) {
 function placeholderLabel(name) {
   const label = String(name || '').replace(/_/g, ' ').trim();
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function demoValueFor(name, index) {
+  const normalized = String(name || '').toLowerCase();
+  const examples = [
+    ['date', '18 May 2026'],
+    ['day', 'Monday'],
+    ['place', 'New Delhi'],
+    ['city', 'New Delhi'],
+    ['state', 'Delhi'],
+    ['court', 'District Court, New Delhi'],
+    ['name', 'Aarav Sharma'],
+    ['party', 'Aarav Sharma'],
+    ['client', 'Aarav Sharma'],
+    ['applicant', 'Aarav Sharma'],
+    ['respondent', 'Meera Kapoor'],
+    ['address', '24, Civil Lines, New Delhi - 110054'],
+    ['amount', 'Rs. 50,000'],
+    ['rupee', 'Rs. 50,000'],
+    ['company', 'NyayaSetu Legal Services Pvt. Ltd.'],
+    ['firm', 'NyayaSetu Legal Services Pvt. Ltd.'],
+    ['email', 'demo@nyayasetu.in'],
+    ['phone', '+91 98765 43210'],
+    ['mobile', '+91 98765 43210'],
+    ['duration', '12 months'],
+    ['term', '12 months'],
+    ['rent', 'Rs. 25,000 per month'],
+    ['salary', 'Rs. 6,00,000 per annum'],
+    ['designation', 'Legal Associate'],
+    ['witness', 'Rohan Mehta'],
+  ];
+
+  const match = examples.find(([keyword]) => normalized.includes(keyword));
+  return match ? match[1] : `Sample detail ${index + 1}`;
 }
 
 function renderPreview(text) {
