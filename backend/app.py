@@ -1510,11 +1510,17 @@ def judgement_prediction():
 
     model_name = data.get("model") or APP_CONFIG.get("judgement_model") or OLLAMA_MODEL
     try:
+        case_count = int(data.get("case_count") or data.get("top_k") or 5)
+    except (TypeError, ValueError):
+        case_count = 5
+    case_count = max(5, min(20, case_count))
+    try:
         result = predict_judgement(
             facts=facts,
             ollama_host=OLLAMA_HOST,
             model=model_name,
             timeout=OLLAMA_TIMEOUT,
+            top_k=case_count,
         )
         return jsonify(result)
     except Exception as e:

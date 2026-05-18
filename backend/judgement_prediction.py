@@ -447,11 +447,13 @@ def predict_judgement(
     ollama_host: str,
     model: str,
     timeout: int = 180,
+    top_k: int = 5,
 ) -> dict:
+    top_k = max(5, min(20, int(top_k or 5)))
     similar_cases = retrieve_cases_vector(
         facts=facts,
         ollama_host=ollama_host,
-        top_k=5,
+        top_k=top_k,
         embedding_model=EMBEDDING_MODEL,
         timeout=min(timeout, 45),
     )
@@ -548,10 +550,11 @@ def verdict_prediction_from_cases(facts: str, similar_cases: list[dict]) -> dict
     weight_total = 0.0
     verdict_counts = {"ALLOWED": 0, "PARTIAL": 0, "DISMISSED": 0, "UNCERTAIN": 0}
 
-    for index, case in enumerate(similar_cases[:5]):
+    for index, case in enumerate(similar_cases):
         verdict = case.get("case_verdict") or infer_case_verdict(case.get("verdict_tail", ""))
         case["case_verdict"] = verdict
-        weight = max(0.08, float(case.get("similarity") or 0.1)) * (1.0 - index * 0.08)
+        rank_weight = max(0.2, 1.0 - index * 0.08)
+        weight = max(0.08, float(case.get("similarity") or 0.1)) * rank_weight
         weighted_score += VERDICT_SCORE.get(verdict, 0.5) * weight
         weight_total += weight
         verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
@@ -569,10 +572,10 @@ def verdict_prediction_from_cases(facts: str, similar_cases: list[dict]) -> dict
             "confidence": confidence,
             "issue_identified": profile["issue"],
             "plain_english": (
-                f"NyayaSetu embedded your facts and compared them with the top 5 closest cases in case_corpus. "
-                f"The weighted verdict pattern was {verdict_summary(verdict_counts)}, so the estimated outcome is {outcome} at {probability}%."
+                f"NyayaSetu compared your facts with {len(similar_cases)} similar past court decisions. "
+                f"Based on how those matters ended, the estimated result is {outcome} at {probability}%."
             ),
-            "ratio_analysis": build_ratio_analysis(similar_cases[:5], outcome, positive_hits, negative_hits),
+            "ratio_analysis": build_ratio_analysis(similar_cases, outcome, positive_hits, negative_hits),
             "recommended_actions": profile["actions"],
             "risk_factors": profile["risks"] + signal_risks(negative_hits),
             "evidence_needed": profile["evidence"],
@@ -588,11 +591,11 @@ def verdict_prediction_from_cases(facts: str, similar_cases: list[dict]) -> dict
                     "case_verdict": case.get("case_verdict"),
                     "retrieval_method": case.get("retrieval_method", "keyword"),
                 }
-                for case in similar_cases[:5]
+                for case in similar_cases
             ],
             "corpus_stats": {
                 "cases_loaded": len(load_case_index()),
-                "cases_retrieved": len(similar_cases[:5]),
+                "cases_retrieved": len(similar_cases),
                 "source": "case_corpus",
                 "retrieval": "ollama_embeddings_vector_search",
                 "embedding_model": EMBEDDING_MODEL,
