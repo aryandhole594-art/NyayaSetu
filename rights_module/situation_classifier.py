@@ -22,7 +22,10 @@ KEYWORD_GROUPS = {
         "product", "defective", "refund", "consumer", "fraud", "service",
         "complaint", "warranty", "seller", "ecommerce", "e-commerce",
         "online purchase", "replacement", "deficiency", "unfair trade",
-        "invoice", "bill", "damaged item", "fake product",
+        "invoice", "bill", "damaged item", "fake product", "company",
+        "manufacturer", "repair", "appliance", "refrigerator", "dishwasher",
+        "washing machine", "ac", "phone", "laptop", "ignored", "not working",
+        "stopped working",
     ],
     "domestic_violence": [
         "husband", "wife", "domestic", "violence", "abuse", "dowry",

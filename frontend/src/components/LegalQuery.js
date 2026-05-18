@@ -49,25 +49,48 @@ function UrgencyBadge({ urgency }) {
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ query, domain }) {
+  const displayDomain = domain === 'auto' ? 'Auto-routing legal domain' : `${domain} domain selected`;
   return (
-    <div className="typing-indicator" aria-label="AI is thinking">
-      <div className="avatar ai" style={{ fontSize: '1.2rem' }}>AI</div>
-      <div className="typing-bubble">
-        <span className="dot" /><span className="dot" /><span className="dot" />
+    <div className="analysis-loader" aria-label="AI is thinking">
+      <div className="loader-orbit" aria-hidden="true">
+        <span />
+        <span />
+        <span />
       </div>
-      <span className="typing-label">Analyzing your legal scenario...</span>
+      <div className="loader-copy">
+        <span className="loader-kicker">NyayaSetu is building your brief</span>
+        <h2>Analyzing the facts, routing the domain, and grounding the answer.</h2>
+        <p>{query || 'Your legal scenario is being processed.'}</p>
+      </div>
+      <div className="loader-steps">
+        <div className="loader-step active">
+          <span>01</span>
+          <strong>Issue detection</strong>
+          <small>Reading facts and relief sought</small>
+        </div>
+        <div className="loader-step active">
+          <span>02</span>
+          <strong>{displayDomain}</strong>
+          <small>Choosing the most relevant corpus</small>
+        </div>
+        <div className="loader-step">
+          <span>03</span>
+          <strong>Legal brief drafting</strong>
+          <small>Preparing laws, actions, and evidence checklist</small>
+        </div>
+      </div>
     </div>
   );
 }
 
 const QUICK_SCENARIOS = [
-  { label: 'Road Accident', text: 'I was injured in a road accident caused by another driver. What are my legal rights and how do I claim compensation?' },
-  { label: 'Unlawful Arrest', text: 'Police arrested me without showing a warrant and are refusing to let me call my lawyer. What are my rights?' },
-  { label: 'Illegal Eviction', text: 'My landlord is forcefully evicting me without giving proper notice. What legal protection do I have?' },
-  { label: 'Salary Not Paid', text: 'My employer has not paid my salary for 3 months and is threatening to fire me. What can I do legally?' },
-  { label: 'Consumer Fraud', text: 'I bought a product online that was defective and the seller is refusing to refund me. What are my rights?' },
-  { label: 'School Denied Admission', text: 'A private school refused to admit my child citing caste. Is this legal? What action can I take?' },
+  { label: 'Consumer Fraud', accent: 'blue', text: 'My new refrigerator stopped working after 3 months and the company is ignoring my complaint. What are my rights?' },
+  { label: 'Unlawful Arrest', accent: 'red', text: 'Police arrested me without showing a warrant and are refusing to let me call my lawyer. What are my rights?' },
+  { label: 'Salary Not Paid', accent: 'green', text: 'My employer has not paid my salary for 3 months and is threatening to fire me. What can I do legally?' },
+  { label: 'Illegal Eviction', accent: 'amber', text: 'My landlord is forcefully evicting me without giving proper notice. What legal protection do I have?' },
+  { label: 'Road Accident', accent: 'violet', text: 'I was injured in a road accident caused by another driver. What are my legal rights and how do I claim compensation?' },
+  { label: 'School Discrimination', accent: 'pink', text: 'A private school refused to admit my child citing caste. Is this legal? What action can I take?' },
 ];
 
 function ArticleCard({ article, index }) {
@@ -195,6 +218,15 @@ function StructuredPanel({ structured, urgency, result, onFollowup }) {
   const misconceptions = structured.misconceptions || [];
   const similar = structured.similar_cases || [];
   const followups = structured.followups || [];
+  const confidenceValue = typeof meta.confidence === 'number' ? meta.confidence : result.explainability?.confidence;
+  const confidenceLabel = typeof confidenceValue === 'number' ? `${confidenceValue}% confident` : 'Grounded brief';
+  const activeDomain = meta.domain || result.explainability?.detected_domain || 'Legal domain';
+  const issueTitle = meta.case_type || result.case_type || summary.signal || 'Legal issue identified';
+  const issueSubline = [
+    activeDomain,
+    parties.forum || 'Forum to be confirmed',
+    urgency?.level ? `${urgency.level} urgency` : null,
+  ].filter(Boolean).join(' · ');
   const snapshotRows = [
     ['Domain', meta.domain || 'General legal query'],
     ['Confidence', typeof meta.confidence === 'number' ? `${meta.confidence}%` : 'Unknown'],
@@ -206,29 +238,57 @@ function StructuredPanel({ structured, urgency, result, onFollowup }) {
 
   return (
     <div className="brief-wrap">
-      <section className="brief-hero-card">
-        <div className="brief-hero-copy">
-          <span className="brief-kicker">Strategic brief</span>
-          <h3 className="brief-title">{meta.case_type || 'Legal Brief'}</h3>
-          <p className="brief-summary-line">{summary.one_line || 'Structured guidance prepared from the legal context available.'}</p>
-          {plain.short_explanation && <p className="brief-plain">{plain.short_explanation}</p>}
+      <section className="case-query-card">
+        <div>
+          <span className="case-query-label">Query</span>
+          <p>{result.query}</p>
         </div>
-        <div className="brief-hero-side">
-          {summary.signal && <span className="signal-chip">{summary.signal}</span>}
-          {urgency?.level && <span className={`urgency-pill ${urgency.level.toLowerCase()}`}>{urgency.level}</span>}
+        <span className="confidence-badge">{confidenceLabel}</span>
+      </section>
+
+      <section className="domain-routing-panel">
+        <div className="section-heading compact">
+          <h4>Domain Routing</h4>
+        </div>
+        <div className="routing-chips">
+          {['Constitutional Law', 'Consumer Protection', 'Criminal Law', 'IT Law', 'Civil Procedure'].map(domain => (
+            <span
+              key={domain}
+              className={`routing-chip ${activeDomain.toLowerCase().includes(domain.toLowerCase().split(' ')[0]) ? 'active' : ''}`}
+            >
+              {domain}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className="issue-panel">
+        <div className="issue-accent" />
+        <div className="issue-copy">
+          <h3>{issueTitle}</h3>
+          <p>{issueSubline}</p>
           <div className="brief-meta">
-            {meta.domain && <span className="meta-chip">Domain: {meta.domain}</span>}
-            {typeof meta.confidence === 'number' && <span className="meta-chip">Confidence: {meta.confidence}%</span>}
+            {summary.signal && <span className="meta-chip warm">{summary.signal}</span>}
             {meta.in_scope === false && <span className="meta-chip warning">Out of corpus</span>}
+            {result.ai_powered && <span className="meta-chip">RAG assisted</span>}
           </div>
         </div>
       </section>
+
+      {plain.short_explanation && (
+        <section className="plain-words-panel">
+          <div className="section-heading compact">
+            <h4>In Plain Words</h4>
+          </div>
+          <div className="plain-words-copy">{plain.short_explanation}</div>
+        </section>
+      )}
 
       <div className="brief-grid brief-grid-top">
         <section className="brief-card brief-card-spotlight">
           <div className="section-heading">
             <h4>Case Snapshot</h4>
-            <span className="section-caption">Quick facts at a glance</span>
+            <span className="section-caption">Matter profile</span>
           </div>
           <div className="snapshot-table-wrap">
             <table className="snapshot-table">
@@ -246,8 +306,8 @@ function StructuredPanel({ structured, urgency, result, onFollowup }) {
 
         <section className="brief-card">
           <div className="section-heading">
-            <h4>Entity Map</h4>
-            <span className="section-caption">Who is involved and where this likely goes</span>
+            <h4>Parties Involved</h4>
+            <span className="section-caption">Who, what, where</span>
           </div>
           <div className="entity-flow">
             <div className="entity-node">
@@ -296,8 +356,8 @@ function StructuredPanel({ structured, urgency, result, onFollowup }) {
 
       <section className="brief-card">
         <div className="section-heading">
-          <h4>Action Timeline</h4>
-          <span className="section-caption">A clear sequence of what to do next</span>
+          <h4>Recommended Actions</h4>
+          <span className="section-caption">Sequenced by urgency</span>
         </div>
         {steps.length > 0 ? (
           <div className="timeline-horizontal">
@@ -642,6 +702,10 @@ function visibleItems(value) {
 
 function ResultPanel({ result, onFollowup }) {
   const [activeTab, setActiveTab] = useState('brief');
+  const panelConfidence = result.structured?.meta?.confidence ?? result.explainability?.confidence;
+  const confidenceText = typeof panelConfidence === 'number' ? `${panelConfidence}% confident` : 'Grounded by corpus';
+  const primaryCorpus = result.explainability?.detected_domain || result.structured?.meta?.domain || 'NyayaSetu corpus';
+  const retrievedCount = result.explainability?.number_of_chunks_used || result.retrieved_sections?.length || 0;
 
   const tabs = [
     { id: 'brief', label: 'Brief', count: null, note: 'Executive summary and strategy' },
@@ -683,11 +747,11 @@ function ResultPanel({ result, onFollowup }) {
         <div className="result-header-top">
           <div className="result-title-section">
             <p className="result-eyebrow">{result.case_type}</p>
-            <h2 className="result-title">Legal Analysis</h2>
+            <h2 className="result-title">{result.structured?.meta?.case_type || 'Legal Analysis'}</h2>
             <p className="result-summary">{result.summary}</p>
           </div>
           <div className="result-badges">
-            <span className={`badge ${result.ai_powered ? 'ai' : ''}`}>{result.ai_powered ? 'AI Powered' : 'Document Mode'}</span>
+            <span className="badge confident">{confidenceText}</span>
             <button className="icon-btn" onClick={copyText} title="Copy full analysis">
               Copy Brief
             </button>
@@ -703,6 +767,21 @@ function ResultPanel({ result, onFollowup }) {
             ))}
           </div>
         )}
+
+        <div className="result-metrics-strip">
+          <div className="metric-tile">
+            <span>Docs retrieved</span>
+            <strong>{retrievedCount || '—'}</strong>
+          </div>
+          <div className="metric-tile">
+            <span>Primary corpus</span>
+            <strong>{primaryCorpus}</strong>
+          </div>
+          <div className="metric-tile">
+            <span>Confidence</span>
+            <strong className="metric-good">{typeof panelConfidence === 'number' && panelConfidence >= 75 ? 'High' : confidenceText}</strong>
+          </div>
+        </div>
       </div>
 
       <div className="result-shell">
@@ -1559,7 +1638,7 @@ function LegalQuery() {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [conversation]);
+  }, [conversation, domainOverride]);
 
   const submitDocument = useCallback(async () => {
     if (!docFile) {
@@ -1642,6 +1721,7 @@ function LegalQuery() {
   const lastAssistantResult = [...conversation].reverse().find(msg => msg.role === 'assistant' && msg.result)?.result || null;
   const lastDocumentResult = [...conversation].reverse().find(msg => msg.role === 'assistant' && msg.docResult)?.docResult || null;
   const hasOutput = Boolean(lastAssistantResult || lastDocumentResult) || loading || docLoading;
+  const activeUserQuery = [...conversation].reverse().find(msg => msg.role === 'user')?.text || query;
 
   return (
     <div className={`lq-root ${fadeIn ? 'fade-in' : ''}`}>
@@ -1650,8 +1730,8 @@ function LegalQuery() {
           <div className="welcome-hero-panel">
             <div className="welcome-copy">
               <span className="welcome-kicker">Premium legal workspace</span>
-              <h1>Ask About Your Rights</h1>
-              <p>Structured constitutional guidance with sharper design, clearer hierarchy, and action-first legal briefings.</p>
+              <h1>Turn a legal problem into a court-ready action plan.</h1>
+              <p>NyayaSetu routes your issue, retrieves the right legal corpus, and turns the answer into a practical brief with laws, evidence, next steps, and risk signals.</p>
             </div>
             <div className="welcome-stat-grid">
               <div className="welcome-stat-card">
@@ -1673,7 +1753,7 @@ function LegalQuery() {
             {QUICK_SCENARIOS.map((s, i) => (
               <button
                 key={i}
-                className="scenario-card"
+                className={`scenario-card scenario-${s.accent || 'blue'}`}
                 onClick={() => handleChipClick(s.text)}
                 disabled={loading}
               >
@@ -1743,7 +1823,7 @@ function LegalQuery() {
             )}
           </div>
         ))}
-        {loading && <TypingIndicator />}
+        {loading && <TypingIndicator query={activeUserQuery} domain={domainOverride} />}
         <div ref={chatEndRef} />
       </div>
 

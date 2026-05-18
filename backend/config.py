@@ -11,10 +11,10 @@ import yaml
 DEFAULT_CONFIG: dict[str, Any] = {
     "llm_provider": "gemini",
     "gemini_model": "gemini-1.5-flash",
-    "ollama_model": "phi3",
+    "ollama_model": "phi3:mini",
     "ollama_host": "http://localhost:11434",
-    "ollama_timeout": 180,
-    "ollama_num_predict": 900,
+    "ollama_timeout": 20,
+    "ollama_num_predict": 220,
 }
 
 ENV_OVERRIDES = {
