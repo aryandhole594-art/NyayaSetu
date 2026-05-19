@@ -9,7 +9,6 @@ import ContactPage from './components/ContactPage';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfService from './components/TermsOfService';
 import FAQPage from './components/FAQPage';
-import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
 import nyayaSetuLogo from './assets/nyayasetu-logo.svg';
 import './App.css';
@@ -58,7 +57,10 @@ function App() {
         <header className="app-header">
           <div className="header-container">
             <Link to="/" className="app-logo" onClick={closeMenu} aria-label="NyayaSetu Home">
-              <span className="brand-text">NyayaSetu</span>
+              <span className="brand-text">
+                <span className="brand-nyaya">Nyaya</span>
+                <span className="brand-setu">Setu</span>
+              </span>
             </Link>
             
             <button 
@@ -138,9 +140,6 @@ function App() {
               </ul>
             </nav>
 
-            <div className="header-actions">
-              <ThemeToggle />
-            </div>
           </div>
         </header>
         

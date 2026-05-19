@@ -194,6 +194,8 @@ function SectionCard({ section, index }) {
   );
 }
 
+// Legacy renderer retained while the grouped result flow settles.
+// eslint-disable-next-line no-unused-vars
 function StructuredPanel({ structured, urgency, result, onFollowup }) {
   if (!structured) {
     return <p className="empty-state">No structured brief available.</p>;
@@ -675,6 +677,651 @@ function StructuredPanel({ structured, urgency, result, onFollowup }) {
   );
 }
 
+function getLegalBriefData(result) {
+  const structured = result.structured || {};
+  const meta = structured.meta || {};
+  const summary = structured.summary || {};
+  const plain = structured.plain_words || {};
+  const parties = structured.parties || {};
+  const laws = structured.applicable_laws || result.articles_cited || [];
+  const rights = structured.rights_vs_limits?.rights || result.your_rights || [];
+  const limits = structured.rights_vs_limits?.limits || [];
+  const steps = structured.steps || (result.next_steps || []).map((step, i) => ({
+    step_no: i + 1,
+    action: step,
+    timeframe: normalizeTimelineTimeframe({}, i),
+  }));
+
+  return {
+    structured,
+    meta,
+    summary,
+    plain,
+    parties,
+    laws,
+    rights,
+    limits,
+    steps,
+    forum: structured.forum_comparison || {},
+    relief: structured.relief_spectrum || [],
+    strength: structured.case_strength || [],
+    costBenefit: structured.cost_benefit || {},
+    clauseRisks: structured.clause_risks || [],
+    evidence: structured.evidence_checklist || [],
+    doList: structured.do_and_avoid?.do || [],
+    avoidList: structured.do_and_avoid?.avoid || [],
+    misconceptions: structured.misconceptions || [],
+    similar: structured.similar_cases || [],
+    followups: structured.followups || [],
+    activeDomain: meta.domain || result.explainability?.detected_domain || 'Legal domain',
+  };
+}
+
+function LegalCaseOverview({ data, result, urgency, viewMode }) {
+  const { meta, summary, plain, parties, activeDomain } = data;
+  const confidenceValue = typeof meta.confidence === 'number' ? meta.confidence : result.explainability?.confidence;
+  const confidenceLabel = typeof confidenceValue === 'number' ? `${confidenceValue}% confident` : 'Grounded brief';
+  const issueTitle = meta.case_type || result.case_type || summary.signal || 'Legal issue identified';
+  const issueSubline = [
+    activeDomain,
+    parties.forum || 'Forum to be confirmed',
+    urgency?.level ? `${urgency.level} urgency` : null,
+  ].filter(Boolean).join(' / ');
+
+  return (
+    <>
+      <section className="case-query-card">
+        <div>
+          <span className="case-query-label">Your query</span>
+          <p>{result.query}</p>
+        </div>
+        <span className="confidence-badge">{confidenceLabel}</span>
+      </section>
+
+      <section className="issue-panel">
+        <div className="issue-accent" />
+        <div className="issue-copy">
+          <h3>{issueTitle}</h3>
+          <p>{issueSubline}</p>
+          <div className="brief-meta">
+            {summary.signal && <span className="meta-chip warm">{summary.signal}</span>}
+            {meta.in_scope === false && <span className="meta-chip warning">Out of corpus</span>}
+            {result.ai_powered && <span className="meta-chip">RAG assisted</span>}
+          </div>
+        </div>
+      </section>
+
+      {plain.short_explanation && (
+        <section className="plain-words-panel">
+          <div className="section-heading compact">
+            <h4>Overview</h4>
+            {viewMode === 'detailed' && <span className="section-caption">Plain-language reading of the facts</span>}
+          </div>
+          <div className="plain-words-copy">{plain.short_explanation}</div>
+        </section>
+      )}
+    </>
+  );
+}
+
+function DomainRoutingCard({ activeDomain }) {
+  return (
+    <section className="domain-routing-panel">
+      <div className="section-heading compact">
+        <div className="title-with-info">
+          <h4>Domain Routing</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Shows the legal domain detected for your query and which corpus is being used.</span></div>
+        </div>
+      </div>
+      <div className="routing-chips">
+        {['Constitutional Law', 'Consumer Protection', 'Criminal Law', 'IT Law', 'Civil Procedure'].map(domain => (
+          <span
+            key={domain}
+            className={`routing-chip ${activeDomain.toLowerCase().includes(domain.toLowerCase().split(' ')[0]) ? 'active' : ''}`}
+          >
+            {domain}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CaseSnapshotCard({ data, urgency, viewMode }) {
+  const { meta, parties } = data;
+  const snapshotRows = [
+    ['Domain', meta.domain || 'General legal query'],
+    ['Confidence', typeof meta.confidence === 'number' ? `${meta.confidence}%` : 'Unknown'],
+    ['Likely forum', parties.forum || 'To be confirmed'],
+    ...(viewMode === 'detailed' ? [
+      ['Provider', meta.llm_provider || 'AI assisted'],
+      ['Urgency', urgency?.level || 'Standard'],
+      ['Corpus fit', meta.in_scope === false ? 'Out of corpus' : 'In constitutional scope'],
+    ] : [
+      ['Urgency', urgency?.level || 'Standard'],
+    ]),
+  ];
+
+  return (
+    <section className="brief-card brief-card-spotlight">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Case Snapshot</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">A quick overview of the legal domain, confidence level, likely forum, and urgency of your case.</span></div>
+        </div>
+        <span className="section-caption">{viewMode === 'detailed' ? 'Matter profile' : 'Fast read'}</span>
+      </div>
+      <div className="snapshot-table-wrap">
+        <table className="snapshot-table">
+          <tbody>
+            {snapshotRows.map(([label, value]) => (
+              <tr key={label}>
+                <th>{label}</th>
+                <td>{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function EntityMapCard({ parties, result }) {
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Entity Map</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Visualize the relationships between the claimant, respondent, and the legal forum.</span></div>
+        </div>
+        <span className="section-caption">Who, what, where</span>
+      </div>
+      <div className="entity-flow">
+        <div className="entity-node">
+          <span className="entity-label">Claimant</span>
+          <strong>{parties.complainant || 'You'}</strong>
+        </div>
+        <div className="entity-connector" />
+        <div className="entity-node">
+          <span className="entity-label">Respondent</span>
+          <strong>{parties.opposite_party || 'Respondent'}</strong>
+        </div>
+        <div className="entity-connector" />
+        <div className="entity-node">
+          <span className="entity-label">Forum</span>
+          <strong>{parties.forum || 'Authority'}</strong>
+        </div>
+      </div>
+      <div className="entity-subject-panel">
+        <span className="entity-label">Subject</span>
+        <p>{parties.subject || result.query || 'Legal issue summary unavailable.'}</p>
+      </div>
+    </section>
+  );
+}
+
+function ApplicableLawsCard({ laws, viewMode }) {
+  const visibleLaws = viewMode === 'simple' ? laws.slice(0, 3) : laws;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Applicable Laws</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Key statutes, constitutional articles, and legal provisions relevant to your scenario.</span></div>
+        </div>
+        <span className="section-caption">Primary legal support</span>
+      </div>
+      {visibleLaws.length > 0 ? (
+        <div className="law-grid">
+          {visibleLaws.map((law, i) => (
+            <div key={`${law.name || law.title}-${i}`} className="law-card">
+              <div className="law-card-head">
+                <strong>{law.name || law.title || `Law ${i + 1}`}</strong>
+                {law.type && <span className="law-type">{law.type}</span>}
+              </div>
+              {(law.why_it_applies || law.relevance) && <p>{law.why_it_applies || law.relevance}</p>}
+              {law.citations?.length > 0 && (
+                <div className="law-citations">
+                  {law.citations.map(c => (
+                    <span key={c} className="law-chip">{c}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-state">No laws extracted for this query.</p>
+      )}
+    </section>
+  );
+}
+
+function CaseStrengthCard({ strength, viewMode }) {
+  const visibleStrength = viewMode === 'simple' ? strength.slice(0, 2) : strength;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Case Strength</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">An AI-driven estimation of the matter's standing based on retrieved precedents and legal factors.</span></div>
+        </div>
+        <span className="section-caption">What helps or weakens the matter</span>
+      </div>
+      <div className="strength-grid">
+        {visibleStrength.length > 0 ? visibleStrength.map((s, i) => (
+          <div key={`${s.label}-${i}`} className="strength-item">
+            <div className="strength-label">
+              <span>{s.label}</span>
+              <span className="strength-value">{Math.min(100, s.score || 0)}%</span>
+            </div>
+            <div className="strength-bar">
+              <div className="strength-fill" style={{ width: `${Math.min(100, s.score || 0)}%` }} />
+            </div>
+            {viewMode === 'detailed' && <div className="strength-note">{s.note || 'No note available.'}</div>}
+          </div>
+        )) : (
+          <div className="strength-empty">
+            <span className="empty-number">01</span>
+            <p>No strength signals available yet. Evidence and documents will shape this most.</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RightsAndLimitsCards({ rights, limits, viewMode }) {
+  const visibleRights = viewMode === 'simple' ? rights.slice(0, 4) : rights;
+  const visibleLimits = viewMode === 'simple' ? limits.slice(0, 4) : limits;
+
+  return (
+    <div className="brief-grid">
+      <section className="brief-card">
+        <div className="section-heading">
+          <div className="title-with-info">
+            <h4>Rights You Can Claim</h4>
+            <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Legal rights that apply to your situation based on constitutional and statutory provisions.</span></div>
+          </div>
+          <span className="section-caption">Strongest visible rights</span>
+        </div>
+        <div className="pill-list">
+          {visibleRights.length > 0 ? visibleRights.map((item, i) => (
+            <div key={`${item}-${i}`} className="info-pill positive">{item}</div>
+          )) : <p className="empty-state">No rights extracted.</p>}
+        </div>
+      </section>
+
+      <section className="brief-card">
+        <div className="section-heading">
+          <div className="title-with-info">
+            <h4>Limits & Watchouts</h4>
+            <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Practical limitations and legal boundaries you should be aware of before taking action.</span></div>
+          </div>
+          <span className="section-caption">Cautions before acting</span>
+        </div>
+        <div className="pill-list">
+          {visibleLimits.length > 0 ? visibleLimits.map((item, i) => (
+            <div key={`${item}-${i}`} className="info-pill caution">{item}</div>
+          )) : <p className="empty-state">No limitations extracted.</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ActionTimelineCard({ steps, viewMode }) {
+  const visibleSteps = viewMode === 'simple' ? steps.slice(0, 3) : steps;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Action Timeline</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">A step-by-step timeline of recommended legal actions, ordered by urgency and importance.</span></div>
+        </div>
+        <span className="section-caption">Sequenced by urgency</span>
+      </div>
+      {visibleSteps.length > 0 ? (
+        <div className="timeline-horizontal">
+          <div className="timeline-rail" />
+          {visibleSteps.map((s, i) => (
+            <div key={`${s.action || 'step'}-${i}`} className="timeline-stop">
+              <div className="timeline-marker">
+                <span className="timeline-index">{i + 1}</span>
+              </div>
+              <div className="timeline-time">{normalizeTimelineTimeframe(s, i)}</div>
+              <div className="timeline-card">
+                <div className="timeline-title">{s.action || 'Step'}</div>
+                <div className="timeline-meta">Action</div>
+                {viewMode === 'detailed' && s.why && <p className="timeline-note">{s.why}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-state">No steps available.</p>
+      )}
+    </section>
+  );
+}
+
+function EvidenceCard({ evidence, viewMode }) {
+  const visibleEvidence = viewMode === 'simple' ? evidence.slice(0, 6) : evidence;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Evidence Checklist</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Documents, records, and proof you should gather to strengthen your legal position.</span></div>
+        </div>
+        <span className="section-caption">Documents to gather now</span>
+      </div>
+      <div className="checklist-grid">
+        {visibleEvidence.length > 0 ? visibleEvidence.map((item, i) => (
+          <div key={`${item}-${i}`} className="check-card">{item}</div>
+        )) : <p className="empty-state">No evidence checklist available.</p>}
+      </div>
+    </section>
+  );
+}
+
+function DoAvoidCard({ doList, avoidList, viewMode }) {
+  const visibleDo = viewMode === 'simple' ? doList.slice(0, 4) : doList;
+  const visibleAvoid = viewMode === 'simple' ? avoidList.slice(0, 4) : avoidList;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Dos & Avoids</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Practical actions that can improve your position, and mistakes to avoid during the process.</span></div>
+        </div>
+        <span className="section-caption">Practical moves</span>
+      </div>
+      <div className="dual-callout">
+        <div className="callout-panel do-panel">
+          <span className="callout-label">Do this</span>
+          <div className="stack-list">
+            {visibleDo.length > 0 ? visibleDo.map((item, i) => (
+              <div key={`${item}-${i}`} className="stack-item">{item}</div>
+            )) : <div className="stack-item muted">No action items listed.</div>}
+          </div>
+        </div>
+        <div className="callout-panel avoid-panel">
+          <span className="callout-label">Avoid this</span>
+          <div className="stack-list">
+            {visibleAvoid.length > 0 ? visibleAvoid.map((item, i) => (
+              <div key={`${item}-${i}`} className="stack-item">{item}</div>
+            )) : <div className="stack-item muted">No avoid items listed.</div>}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FollowupsCard({ followups, onFollowup }) {
+  if (!followups.length) return null;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Useful Follow-Ups</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Suggested questions to explore next for a deeper understanding of your legal situation.</span></div>
+        </div>
+        <span className="section-caption">Questions worth asking next</span>
+      </div>
+      <div className="followup-list">
+        {followups.map((f, i) => (
+          <button
+            key={`${f}-${i}`}
+            type="button"
+            className="followup-chip followup-btn"
+            onClick={() => onFollowup?.(f)}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DetailedOptionalCards({ data }) {
+  const { structured, forum, relief, costBenefit, clauseRisks, misconceptions, similar } = data;
+
+  return (
+    <>
+      {structured.compliance_checklist?.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Compliance Checklist</h4>
+            <span className="section-caption">Requirements based on business type and employee count</span>
+          </div>
+          <div className="checklist-grid">
+            {structured.compliance_checklist.map((item, i) => (
+              <div key={`${item.act}-${i}`} className={`check-card ${item.status || ''}`} style={{ borderColor: item.status === 'applicable' ? 'var(--lq-success)' : 'var(--lq-amber)' }}>
+                <strong>{item.status_symbol || '-'} {item.act}</strong>
+                <p style={{ marginTop: '8px', color: 'var(--lq-text-soft)' }}>{item.requirement_summary}</p>
+                {item.sources?.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <span className="meta-chip" style={{ fontSize: '0.75rem' }}>Sources: {item.sources.join(', ')}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {forum.rows?.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Forum Comparison</h4>
+            <span className="section-caption">Compare where the matter can be taken</span>
+          </div>
+          <div className="forum-table-wrap">
+            <table className="forum-table">
+              <thead>
+                <tr>
+                  <th>Factor</th>
+                  {(forum.forums || []).map(f => <th key={f}>{f}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {forum.rows.map((row, i) => (
+                  <tr key={`${row.factor}-${i}`}>
+                    <td>{row.factor}</td>
+                    {(row.values || []).map((v, idx) => <td key={`${row.factor}-${idx}`}>{v}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {(relief.length > 0 || costBenefit.invest?.length > 0 || costBenefit.recover?.length > 0) && (
+        <div className="brief-grid">
+          {relief.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Relief Spectrum</h4>
+                <span className="section-caption">Typical outcomes to aim for</span>
+              </div>
+              <div className="relief-list">
+                {relief.map((r, i) => (
+                  <div key={`${r.label}-${i}`} className="relief-item">
+                    <div className="relief-copy">
+                      <div className="relief-label">{r.label}</div>
+                      <div className="relief-range">{r.range}</div>
+                    </div>
+                    <div className={`relief-bar ${r.level || ''}`}>
+                      <div style={{ width: `${Math.min(100, r.likelihood || 0)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {(costBenefit.invest?.length > 0 || costBenefit.recover?.length > 0) && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Cost and Recovery</h4>
+                <span className="section-caption">Likely inputs versus possible returns</span>
+              </div>
+              <div className="cost-benefit">
+                <div className="cost-panel">
+                  <h5>What you invest</h5>
+                  {(costBenefit.invest || []).map((item, i) => (
+                    <div key={`${item.item}-${i}`} className="cost-row">
+                      <span>{item.item}</span>
+                      <strong>{item.amount}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="benefit-panel">
+                  <h5>What you can recover</h5>
+                  {(costBenefit.recover || []).map((item, i) => (
+                    <div key={`${item.item}-${i}`} className="cost-row">
+                      <span>{item.item}</span>
+                      <strong>{item.amount}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {clauseRisks.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Clause Risk Scanner</h4>
+            <span className="section-caption">Terms that may need revision or caution</span>
+          </div>
+          <div className="risk-list">
+            {clauseRisks.map((c, i) => (
+              <div key={`${c.clause}-${i}`} className={`risk-item ${c.risk_level || 'medium'}`}>
+                <div className="risk-head">
+                  <strong>{c.clause}</strong>
+                  <span className="risk-level">{c.risk_level}</span>
+                </div>
+                <p>{c.issue}</p>
+                {c.fix && <div className="risk-fix">Fix: {c.fix}</div>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(misconceptions.length > 0 || similar.length > 0) && (
+        <div className="brief-grid">
+          {misconceptions.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Common Misconceptions</h4>
+                <span className="section-caption">Quick legal corrections worth knowing</span>
+              </div>
+              <div className="misconceptions">
+                {misconceptions.map((m, i) => (
+                  <div key={`${m.claim}-${i}`} className="misconception-item">
+                    <div className="misconception-claim">{m.claim}</div>
+                    <div className="misconception-truth">{m.truth}</div>
+                    {m.explanation && <div className="misconception-note">{m.explanation}</div>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {similar.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <div className="title-with-info">
+                  <h4>Similar Precedents</h4>
+                  <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Court cases with similar facts and outcomes that can guide expectations.</span></div>
+                </div>
+                <span className="section-caption">Comparable court outcomes</span>
+              </div>
+              <div className="precedent-row">
+                {similar.map((c, i) => (
+                  <div key={`${c.case_name}-${i}`} className="precedent-card">
+                    <div className="precedent-title">{c.case_name}</div>
+                    <div className="precedent-meta">{c.court} / {c.year}</div>
+                    <div className="precedent-outcome">{c.outcome}</div>
+                    {c.similarity && (
+                      <div className="precedent-bar">
+                        <div style={{ width: `${c.similarity.replace('%', '')}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ExplainabilityCard({ explainability, viewMode }) {
+  if (!explainability) {
+    return <p className="empty-state">No explainability insights available for this query.</p>;
+  }
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Explainability</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Transparency details on how the AI built this answer, including domain detection and source documents.</span></div>
+        </div>
+        <span className="section-caption">How this answer was built</span>
+      </div>
+      <div className="snapshot-table-wrap">
+        <table className="snapshot-table">
+          <tbody>
+            <tr>
+              <th>Detected Domain</th>
+              <td><strong>{explainability.detected_domain || 'Unknown'}</strong></td>
+            </tr>
+            <tr>
+              <th>Confidence</th>
+              <td>{explainability.confidence || 'N/A'}%</td>
+            </tr>
+            {viewMode === 'detailed' && (
+              <>
+                <tr>
+                  <th>Matched Keywords</th>
+                  <td>{(explainability.matched_keywords || []).join(', ') || 'None'}</td>
+                </tr>
+                <tr>
+                  <th>Explanation</th>
+                  <td>{explainability.short_explanation}</td>
+                </tr>
+                <tr>
+                  <th>Chunks Used</th>
+                  <td>{explainability.number_of_chunks_used || 0}</td>
+                </tr>
+              </>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function StepCard({ step, index }) {
   return (
     <div className="step-card" style={{ animationDelay: `${index * 60}ms` }}>
@@ -687,6 +1334,7 @@ function StepCard({ step, index }) {
   );
 }
 
+// eslint-disable-next-line no-unused-vars
 function RightItem({ right, index }) {
   return (
     <div className="right-item" style={{ animationDelay: `${index * 60}ms` }}>
@@ -702,19 +1350,20 @@ function visibleItems(value) {
 
 function ResultPanel({ result, onFollowup }) {
   const [activeTab, setActiveTab] = useState('brief');
-  const panelConfidence = result.structured?.meta?.confidence ?? result.explainability?.confidence;
+  const [viewMode, setViewMode] = useState('simple');
+  const data = getLegalBriefData(result);
+  const panelConfidence = data.meta?.confidence ?? result.explainability?.confidence;
   const confidenceText = typeof panelConfidence === 'number' ? `${panelConfidence}% confident` : 'Grounded by corpus';
-  const primaryCorpus = result.explainability?.detected_domain || result.structured?.meta?.domain || 'NyayaSetu corpus';
+  const primaryCorpus = result.explainability?.detected_domain || data.meta?.domain || 'NyayaSetu corpus';
   const retrievedCount = result.explainability?.number_of_chunks_used || result.retrieved_sections?.length || 0;
+  const sourceCount = result.retrieved_sections?.length || 0;
 
   const tabs = [
-    { id: 'brief', label: 'Brief', count: null, note: 'Executive summary and strategy' },
-    { id: 'analysis', label: 'Analysis', count: result.key_points?.length || null, note: 'Narrative legal reasoning' },
-    { id: 'articles', label: 'Articles', count: result.articles_cited?.length || result.retrieved_sections?.length, note: 'Core citations and references' },
-    { id: 'rights', label: 'Rights', count: result.your_rights?.length, note: 'Rights triggered by the facts' },
-    { id: 'steps', label: 'Next Steps', count: result.next_steps?.length, note: 'Practical actions to take' },
-    { id: 'sources', label: 'Source Sections', count: result.retrieved_sections?.length, note: 'Retrieved constitutional text' },
-    { id: 'explain', label: 'Explainability', count: null, note: 'Domain detection and insights' },
+    { id: 'brief', label: 'Brief', count: data.laws.length || null, note: 'Overview, snapshot, entities, strength, laws' },
+    { id: 'rights', label: 'Rights', count: data.rights.length + data.limits.length || null, note: 'Claims, limits, and watchouts' },
+    { id: 'strategy', label: 'Strategy', count: data.evidence.length + data.steps.length + data.followups.length || null, note: 'Evidence, dos, timeline, follow-ups' },
+    { id: 'analysis', label: 'Analysis', count: (result.key_points?.length || 0) + (result.articles_cited?.length || 0) || null, note: 'Legal points, articles, detailed next steps' },
+    { id: 'sources', label: 'Sources', count: sourceCount || null, note: 'Source sections and explainability' },
   ];
 
   const activeTabMeta = tabs.find(tab => tab.id === activeTab) || tabs[0];
@@ -741,13 +1390,169 @@ function ResultPanel({ result, onFollowup }) {
     await navigator.clipboard.writeText(text);
   }, [result]);
 
+  const renderBriefTab = () => (
+    <div className="tab-pane">
+      <LegalCaseOverview data={data} result={result} urgency={result.urgency} viewMode={viewMode} />
+      {viewMode === 'detailed' && <DomainRoutingCard activeDomain={data.activeDomain} />}
+      <div className="brief-grid brief-grid-top">
+        <CaseSnapshotCard data={data} urgency={result.urgency} viewMode={viewMode} />
+        <EntityMapCard parties={data.parties} result={result} />
+      </div>
+      <div className="brief-grid">
+        <CaseStrengthCard strength={data.strength} viewMode={viewMode} />
+        <ApplicableLawsCard laws={data.laws} viewMode={viewMode} />
+      </div>
+      {viewMode === 'detailed' && <DetailedOptionalCards data={data} />}
+    </div>
+  );
+
+  const renderRightsTab = () => (
+    <div className="tab-pane">
+      <p className="tab-intro">The claimable rights and the practical limits visible from the current facts.</p>
+      <RightsAndLimitsCards rights={data.rights} limits={data.limits} viewMode={viewMode} />
+      {viewMode === 'detailed' && (
+        <div className="legal-aid-box">
+          <h4>Free legal support</h4>
+          <p>Contact the <strong>District Legal Services Authority (DLSA)</strong> for free legal aid.</p>
+          <p><strong>Tele-Law Helpline:</strong> 15100</p>
+          <p><strong>National Legal Services Authority:</strong> nalsa.gov.in</p>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderStrategyTab = () => (
+    <div className="tab-pane">
+      <div className="brief-grid">
+        <EvidenceCard evidence={data.evidence} viewMode={viewMode} />
+        <DoAvoidCard doList={data.doList} avoidList={data.avoidList} viewMode={viewMode} />
+      </div>
+      <ActionTimelineCard steps={data.steps} viewMode={viewMode} />
+      <FollowupsCard followups={viewMode === 'simple' ? data.followups.slice(0, 4) : data.followups} onFollowup={onFollowup} />
+    </div>
+  );
+
+  const renderAnalysisTab = () => (
+    <div className="tab-pane">
+      {result.key_points?.length > 0 && (
+        <div className="key-points-box">
+          <div className="section-heading">
+            <h4>Key Legal Points</h4>
+            <span className="section-caption">Fast scan of the most important takeaways</span>
+          </div>
+          <div className="key-points-grid">
+            {(viewMode === 'simple' ? result.key_points.slice(0, 4) : result.key_points).map((pt, i) => (
+              <div key={`${pt}-${i}`} className="key-point-card">{pt}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {viewMode === 'detailed' && result.articles_cited?.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Articles</h4>
+            <span className="section-caption">Core citations and references</span>
+          </div>
+          <div className="articles-list">
+            {result.articles_cited.map((a, i) => (
+              <ArticleCard key={`${a.number || a.title}-${i}`} article={a} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {viewMode === 'detailed' && (
+        <>
+          <section className="brief-card">
+            <div className="section-heading">
+              <h4>Next Steps (Detailed)</h4>
+              <span className="section-caption">Practical actions to take</span>
+            </div>
+            <div className="steps-list">
+              {(result.next_steps || []).map((s, i) => (
+                <StepCard key={`${s}-${i}`} step={s} index={i} />
+              ))}
+            </div>
+          </section>
+
+          <div className="analysis-body">
+            <RenderText text={result.analysis} />
+          </div>
+        </>
+      )}
+
+      {viewMode === 'simple' && (
+        <div className="disclaimer-box">
+          <span className="disclaimer-label">Important</span>
+          <p>{result.disclaimer}</p>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSourcesTab = () => {
+    const visibleSections = viewMode === 'simple' ? (result.retrieved_sections || []).slice(0, 3) : result.retrieved_sections || [];
+
+    return (
+      <div className="tab-pane">
+        <p className="tab-intro">
+          {viewMode === 'simple'
+            ? 'Top source matches that support this answer.'
+            : 'Retrieved source sections and the reasoning trail behind this answer.'}
+        </p>
+        <div className="sections-list">
+          {visibleSections.length > 0 ? visibleSections.map((s, i) => (
+            viewMode === 'simple' ? (
+              <div key={`${s.title}-${i}`} className="section-card source-summary-card">
+                <div className="section-card-header source-summary-static">
+                  <div className="section-card-primary">
+                    <div className="section-title">{s.title}</div>
+                    <p className="source-summary-excerpt">{s.excerpt}</p>
+                  </div>
+                  {typeof s.score === 'number' && <span className="tab-count">{s.score.toFixed(1)}</span>}
+                </div>
+              </div>
+            ) : (
+              <SectionCard key={`${s.title}-${i}`} section={s} index={i} />
+            )
+          )) : <p className="empty-state">No retrieved source sections available.</p>}
+        </div>
+
+        <ExplainabilityCard explainability={result.explainability} viewMode={viewMode} />
+
+        {viewMode === 'detailed' && result.explainability?.source_documents?.length > 0 && (
+          <section className="brief-card">
+            <div className="section-heading">
+              <h4>Source Documents</h4>
+              <span className="section-caption">Documents sourced for this query</span>
+            </div>
+            <div className="pill-list">
+              {result.explainability.source_documents.map((doc, i) => (
+                <div key={`${doc}-${i}`} className="info-pill">{doc}</div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    );
+  };
+
+  const renderActiveTab = () => {
+    if (activeTab === 'rights') return renderRightsTab();
+    if (activeTab === 'strategy') return renderStrategyTab();
+    if (activeTab === 'analysis') return renderAnalysisTab();
+    if (activeTab === 'sources') return renderSourcesTab();
+    return renderBriefTab();
+  };
+
   return (
-    <div className="result-panel">
+    <div className="result-panel legal-result-panel">
       <div className="result-header">
         <div className="result-header-top">
           <div className="result-title-section">
             <p className="result-eyebrow">{result.case_type}</p>
-            <h2 className="result-title">{result.structured?.meta?.case_type || 'Legal Analysis'}</h2>
+            <h2 className="result-title">{data.meta?.case_type || 'Legal Analysis'}</h2>
             <p className="result-summary">{result.summary}</p>
           </div>
           <div className="result-badges">
@@ -768,200 +1573,62 @@ function ResultPanel({ result, onFollowup }) {
           </div>
         )}
 
-        <div className="result-metrics-strip">
-          <div className="metric-tile">
-            <span>Docs retrieved</span>
-            <strong>{retrievedCount || '—'}</strong>
+        {viewMode === 'detailed' && (
+          <div className="result-metrics-strip">
+            <div className="metric-tile">
+              <span>Docs retrieved</span>
+              <strong>{retrievedCount || '-'}</strong>
+            </div>
+            <div className="metric-tile">
+              <span>Primary corpus</span>
+              <strong>{primaryCorpus}</strong>
+            </div>
+            <div className="metric-tile">
+              <span>Confidence</span>
+              <strong className="metric-good">{typeof panelConfidence === 'number' && panelConfidence >= 75 ? 'High' : confidenceText}</strong>
+            </div>
           </div>
-          <div className="metric-tile">
-            <span>Primary corpus</span>
-            <strong>{primaryCorpus}</strong>
-          </div>
-          <div className="metric-tile">
-            <span>Confidence</span>
-            <strong className="metric-good">{typeof panelConfidence === 'number' && panelConfidence >= 75 ? 'High' : confidenceText}</strong>
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="result-shell">
-        <aside className="result-sidebar">
-          <div className="sidebar-card">
-            <span className="sidebar-label">Consultation flow</span>
-            <h3>{activeTabMeta.label}</h3>
-            <p>{activeTabMeta.note}</p>
-          </div>
-
-          <nav className="sidebar-nav" aria-label="Result sections">
+      <div className="legal-flow-toolbar">
+        <div className="toolbar-integrated-row">
+          <nav className="legal-tab-rail" aria-label="Grouped result sections">
             {tabs.map(tab => (
               <button
                 key={tab.id}
                 type="button"
-                className={`sidebar-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                className={`sidebar-tab-btn legal-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span className="sidebar-tab-copy">
                   <span className="sidebar-tab-label">{tab.label}</span>
-                  <span className="sidebar-tab-note">{tab.note}</span>
                 </span>
                 {tab.count > 0 && <span className="tab-count">{tab.count}</span>}
               </button>
             ))}
           </nav>
 
-          <div className="sidebar-card sidebar-card-muted">
-            <span className="sidebar-label">Working query</span>
-            <p>{result.query}</p>
+          <div className="mode-toggle-pill" aria-label="Result detail level">
+            {['simple', 'detailed'].map(mode => (
+              <button
+                key={mode}
+                type="button"
+                className={viewMode === mode ? 'active' : ''}
+                onClick={() => setViewMode(mode)}
+                aria-pressed={viewMode === mode}
+              >
+                {mode === 'simple' ? 'Simple' : 'Detailed'}
+              </button>
+            ))}
           </div>
-        </aside>
+        </div>
+      </div>
 
+      <div className="legal-result-shell">
         <div className="result-main">
           <div className="tab-content">
-            {activeTab === 'brief' && (
-              <div className="tab-pane">
-                <StructuredPanel
-                  structured={result.structured}
-                  urgency={result.urgency}
-                  result={result}
-                  onFollowup={onFollowup}
-                />
-              </div>
-            )}
-
-            {activeTab === 'analysis' && (
-              <div className="tab-pane">
-                {result.key_points?.length > 0 && (
-                  <div className="key-points-box">
-                    <div className="section-heading">
-                      <h4>Key Legal Points</h4>
-                      <span className="section-caption">Fast scan of the most important takeaways</span>
-                    </div>
-                    <div className="key-points-grid">
-                      {result.key_points.map((pt, i) => <div key={`${pt}-${i}`} className="key-point-card">{pt}</div>)}
-                    </div>
-                  </div>
-                )}
-                <div className="analysis-body">
-                  <RenderText text={result.analysis} />
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'articles' && (
-              <div className="tab-pane">
-                {result.articles_cited?.length > 0 ? (
-                  <>
-                    <p className="tab-intro">Constitutional articles directly relevant to your case.</p>
-                    <div className="articles-list">
-                      {result.articles_cited.map((a, i) => (
-                        <ArticleCard key={`${a.number || a.title}-${i}`} article={a} index={i} />
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <p className="empty-state">No specific articles were extracted by the AI. Use Source Sections to inspect the retrieved constitutional text.</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'rights' && (
-              <div className="tab-pane">
-                <p className="tab-intro">Based on your situation, these rights appear most relevant under Indian law.</p>
-                <div className="rights-list">
-                  {(result.your_rights || []).map((r, i) => (
-                    <RightItem key={`${r}-${i}`} right={r} index={i} />
-                  ))}
-                </div>
-                <div className="legal-aid-box">
-                  <h4>Free legal support</h4>
-                  <p>Contact the <strong>District Legal Services Authority (DLSA)</strong> for free legal aid.</p>
-                  <p><strong>Tele-Law Helpline:</strong> 15100</p>
-                  <p><strong>National Legal Services Authority:</strong> nalsa.gov.in</p>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'steps' && (
-              <div className="tab-pane">
-                <p className="tab-intro">Action items for your situation.</p>
-                <div className="steps-list">
-                  {(result.next_steps || []).map((s, i) => (
-                    <StepCard key={`${s}-${i}`} step={s} index={i} />
-                  ))}
-                </div>
-                <div className="disclaimer-box">
-                  <span className="disclaimer-label">Important</span>
-                  <p>{result.disclaimer}</p>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'sources' && (
-              <div className="tab-pane">
-                <p className="tab-intro">These sections were retrieved from the Constitution of India using the hybrid RAG engine.</p>
-                <div className="sections-list">
-                  {(result.retrieved_sections || []).map((s, i) => (
-                    <SectionCard key={`${s.title}-${i}`} section={s} index={i} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'explain' && result.explainability && (
-              <div className="tab-pane">
-                <p className="tab-intro">Insights into how the AI selected the legal corpus and retrieved sections.</p>
-                
-                <div className="brief-card">
-                  <div className="section-heading">
-                    <h4>Situation-to-Law Mapper</h4>
-                    <span className="section-caption">Automatic domain selection</span>
-                  </div>
-                  <div className="snapshot-table-wrap">
-                    <table className="snapshot-table">
-                      <tbody>
-                        <tr>
-                          <th>Detected Domain</th>
-                          <td><strong>{result.explainability.detected_domain || 'Unknown'}</strong></td>
-                        </tr>
-                        <tr>
-                          <th>Confidence</th>
-                          <td>{result.explainability.confidence || 'N/A'}%</td>
-                        </tr>
-                        <tr>
-                          <th>Matched Keywords</th>
-                          <td>{(result.explainability.matched_keywords || []).join(', ') || 'None'}</td>
-                        </tr>
-                        <tr>
-                          <th>Explanation</th>
-                          <td>{result.explainability.short_explanation}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="brief-card" style={{ marginTop: '20px' }}>
-                  <div className="section-heading">
-                    <h4>Corpus Retrieval</h4>
-                    <span className="section-caption">Documents sourced for this query</span>
-                  </div>
-                  <div className="pill-list">
-                    {result.explainability.source_documents?.map((doc, i) => (
-                      <div key={i} className="info-pill">{doc}</div>
-                    ))}
-                  </div>
-                  <p style={{ marginTop: '10px', color: 'var(--lq-text-soft)', fontSize: '0.9rem' }}>
-                    Number of chunks used: {result.explainability.number_of_chunks_used}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'explain' && !result.explainability && (
-              <div className="tab-pane">
-                <p className="empty-state">No explainability insights available for this query.</p>
-              </div>
-            )}
+            {renderActiveTab()}
           </div>
         </div>
       </div>
@@ -987,21 +1654,30 @@ function DocumentResultPanel({ docResult }) {
     await navigator.clipboard.writeText(docResult.report_markdown);
   }, [docResult]);
 
-  const exhaustive = Boolean(report.document_identity);
-  const identity = report.document_identity || report.document_overview || {};
+  const exhaustive = Boolean(report.document_identity || report.identity);
+  const identity = report.identity || report.document_identity || report.document_overview || {};
   const priorityAlerts = report.priority_alerts || report.critical_legal_alerts || {};
   const allParties = visibleItems(report.all_parties_involved || report.parties_involved);
-  const allDates = visibleItems(report.all_dates_deadlines || report.important_dates_deadlines);
-  const allMoney = visibleItems(report.all_financial_details || report.financial_obligations);
-  const allTerms = visibleItems(report.important_legal_terms_found || report.key_terms_definitions);
-  const allClauses = visibleItems(report.all_clauses_full_list || report.critical_clauses);
+  const allDates = visibleItems(report.dates || report.all_dates_deadlines || report.important_dates_deadlines);
+  const allMoney = visibleItems(report.financials || report.all_financial_details || report.financial_obligations);
+  const allTerms = visibleItems(report.important_legal_terms_found || report.key_terms_definitions).filter((t) => {
+    if (!t || typeof t !== 'object') return false;
+    const fields = [t.term, t.found_in, t.document_says, t.plain_english];
+    return fields.some(v => v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== 'NOT FOUND IN DOCUMENT');
+  });
+  const allClauses = visibleItems(report.clauses || report.all_clauses_full_list || report.critical_clauses);
+  const allObligations = visibleItems(report.obligations || report.obligations_summary || []);
   const allRisks = visibleItems(report.red_flags_risks || report.red_flags_risk_analysis);
   const allAttachments = visibleItems(report.attachments_exhibits_references || report.attachments_exhibits);
+  const summonsObj = Array.isArray(priorityAlerts.summons) ? (priorityAlerts.summons[0] || null) : (priorityAlerts.summons || null);
+  const hearingItems = visibleItems(priorityAlerts.hearings || priorityAlerts.court_hearings);
+  const orderItems = visibleItems(priorityAlerts.orders || priorityAlerts.orders_directions);
+  const noticeItems = visibleItems(priorityAlerts.notices);
   const allAlerts = {
     summons: visibleItems(priorityAlerts.summons),
-    court_hearings: visibleItems(priorityAlerts.court_hearings),
-    notices: visibleItems(priorityAlerts.notices),
-    orders_directions: visibleItems(priorityAlerts.orders_directions),
+    court_hearings: hearingItems,
+    notices: noticeItems,
+    orders_directions: orderItems,
     warrants: visibleItems(priorityAlerts.warrants),
     injunctions: visibleItems(priorityAlerts.injunctions),
     appeals: visibleItems(priorityAlerts.appeals),
@@ -1010,33 +1686,144 @@ function DocumentResultPanel({ docResult }) {
   const partyMap = obligations.per_party || {};
   const courtDirections = visibleItems(obligations.court_authority || []);
   const plainSummary = report.plain_english_summary || {};
+  const normalizeLanguage = (value) => {
+    const v = String(value || '').trim().toLowerCase();
+    if (v === 'en' || v === 'eng' || v === 'english') return 'English';
+    if (v === 'hi' || v === 'hin' || v === 'hindi') return 'Hindi';
+    return value;
+  };
+  const repairTruncatedWord = (value) => {
+    const v = String(value || '').trim();
+    if (/^(i?minal|riminal)$/i.test(v)) return 'Criminal';
+    if (/^(ivil)$/i.test(v)) return 'Civil';
+    return value;
+  };
+  const isWeakIdentityText = (value) => {
+    const v = String(value || '').trim().toLowerCase();
+    return (
+      v.startsWith('the conditions laid down under') ||
+      v.startsWith('subject to applicable law') ||
+      v.startsWith('as per law')
+    );
+  };
+  const identityView = {
+    ...identity,
+    document_type: repairTruncatedWord(identity.document_type),
+    case_number: repairTruncatedWord(identity.case_number),
+    case_number_reference: repairTruncatedWord(identity.case_number_reference),
+    language: normalizeLanguage(identity.language || checks.language),
+    jurisdiction: isWeakIdentityText(identity.jurisdiction) ? null : identity.jurisdiction,
+    jurisdiction_governing_law: isWeakIdentityText(identity.jurisdiction_governing_law) ? null : identity.jurisdiction_governing_law,
+  };
+  const sectionHasData = (value) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim() !== '' && value.trim() !== 'NOT FOUND IN DOCUMENT';
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') {
+      return Object.values(value).some(v =>
+        v !== null &&
+        v !== undefined &&
+        v !== 'NOT FOUND IN DOCUMENT' &&
+        v !== ''
+      );
+    }
+    return false;
+  };
+  const hasValue = (v) => v !== null && v !== undefined && v !== '' && v !== 'NOT FOUND IN DOCUMENT';
+  const data = {
+    priority_alerts: priorityAlerts,
+    identity,
+    parties: allParties,
+    dates: allDates,
+    financials: allMoney,
+    legal_terms: allTerms,
+    clauses: allClauses,
+    obligations: allObligations,
+    red_flags: allRisks,
+    attachments: allAttachments,
+    plain_english_summary: plainSummary,
+  };
+  const priorityCount = hearingItems.length + orderItems.length + noticeItems.length + (summonsObj?.present ? 1 : 0);
+  const priorityHasData = sectionHasData(data.priority_alerts) && (
+    summonsObj?.present === true ||
+    hearingItems.length > 0 ||
+    orderItems.length > 0 ||
+    noticeItems.length > 0
+  );
+  const identityHasData = sectionHasData(data.identity);
+  const partiesHasData = Array.isArray(data.parties) && data.parties.length > 0;
+  const datesHasData = Array.isArray(data.dates) && data.dates.length > 0;
+  const termsHasData = Array.isArray(data.legal_terms) && data.legal_terms.length > 0;
+  const clausesHasData = Array.isArray(data.clauses) && data.clauses.length > 0;
+  const obligationsHasData = Array.isArray(data.obligations) && data.obligations.length > 0;
+  const attachmentsHasData = Array.isArray(data.attachments) && data.attachments.length > 0 && data.attachments.some(a => hasValue(a?.reference));
+  const plainEnglishHasData = sectionHasData(data.plain_english_summary);
   const tabs = exhaustive ? [
-    { id: 'priority', label: 'Priority Alerts', note: 'Summons and hearings', count: allAlerts.summons.length + allAlerts.court_hearings.length },
+    { id: 'priority', label: 'Priority Alerts', note: 'Summons and hearings', count: priorityCount },
     { id: 'identity', label: 'Identity', note: 'Document metadata', count: null },
     { id: 'parties', label: 'Parties', note: 'Every identified entity', count: allParties.length },
-    { id: 'alerts', label: 'Alerts', note: 'Notices, orders, warrants', count: allAlerts.notices.length + allAlerts.orders_directions.length + allAlerts.warrants.length + allAlerts.injunctions.length + allAlerts.appeals.length },
     { id: 'dates', label: 'Dates', note: 'Deadlines and time limits', count: allDates.length },
-    { id: 'money', label: 'Financials', note: 'Money and fees', count: allMoney.length },
     { id: 'terms', label: 'Legal Terms', note: 'Glossary items found', count: allTerms.length },
     { id: 'clauses', label: 'Clauses', note: 'Full clause inventory', count: allClauses.length },
-    { id: 'obligations', label: 'Obligations', note: 'Who must do what', count: Object.keys(partyMap).length + courtDirections.length },
-    { id: 'risks', label: 'Red Flags', note: 'Risk analysis', count: allRisks.length },
-    { id: 'summary', label: 'Summary', note: 'Plain-English explanation', count: null },
+    { id: 'obligations', label: 'Obligations', note: 'Who must do what', count: allObligations.length },
     { id: 'attachments', label: 'Attachments', note: 'Exhibits and references', count: allAttachments.length },
-  ] : [
+    { id: 'summary', label: 'Plain English Summary', note: 'Plain-English explanation', count: null },
+  ].filter(tab => (
+    (tab.id === 'priority' && priorityHasData) ||
+    (tab.id === 'identity' && identityHasData) ||
+    (tab.id === 'parties' && partiesHasData) ||
+    (tab.id === 'dates' && datesHasData) ||
+    (tab.id === 'terms' && termsHasData) ||
+    (tab.id === 'clauses' && clausesHasData) ||
+    (tab.id === 'obligations' && obligationsHasData) ||
+    (tab.id === 'attachments' && attachmentsHasData) ||
+    (tab.id === 'summary' && plainEnglishHasData)
+  )) : [
     { id: 'overview', label: 'Overview', note: 'Document type and metadata', count: null },
     { id: 'parties', label: 'Parties', note: 'Involved entities and roles', count: visibleItems(parties).length || null },
     { id: 'terms', label: 'Key Terms', note: 'Defined legal terms', count: visibleItems(terms).length || null },
     { id: 'clauses', label: 'Critical Clauses', note: 'Clause-level analysis', count: visibleItems(clauses).length || null },
-    { id: 'risks', label: 'Risk Analysis', note: 'Red flags and legal risk', count: visibleItems(risks).length || null },
     { id: 'dates', label: 'Dates', note: 'Deadlines and key dates', count: visibleItems(dates).length || null },
-    { id: 'money', label: 'Financials', note: 'Monetary obligations', count: visibleItems(money).length || null },
     { id: 'obligations', label: 'Obligations', note: 'Party-wise duties', count: (obligations.party_a_must?.length || 0) + (obligations.party_b_must?.length || 0) || null },
     { id: 'attachments', label: 'Attachments', note: 'Exhibits and annexures', count: visibleItems(attachments).length || null },
     { id: 'summary', label: 'Plain-English', note: 'Readable legal summary', count: null },
   ];
-  const [activeTab, setActiveTab] = useState(exhaustive ? 'priority' : 'overview');
-  const activeTabMeta = tabs.find(t => t.id === activeTab) || tabs[0] || { label: 'Overview', note: '' };
+  const [activeTab, setActiveTab] = useState('overview');
+  const showDateWhoCol = allDates.some(d => hasValue(d.who_it_affects));
+  const showAmountCol = allMoney.some(m => hasValue(m.amount));
+  const showPurposeCol = allMoney.some(m => hasValue(m.purpose));
+  const showWhoCol = allMoney.some(m => hasValue(m.who_pays));
+  const showDueCol = allMoney.some(m => hasValue(m.due_date));
+  const randomPartyId = () => `PTY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const cleanedAttachments = allAttachments.filter(a => hasValue(a?.reference) || hasValue(a?.what_it_is) || hasValue(a?.attached));
+  const showRefCol = cleanedAttachments.some(a => hasValue(a.reference));
+  const showWhatCol = cleanedAttachments.some(a => hasValue(a.what_it_is));
+  const showAttachedCol = cleanedAttachments.some(a => hasValue(a.attached));
+  const shortText = (value, limit = 220) => {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+    return text.length > limit ? `${text.slice(0, limit)}...` : text;
+  };
+  const pickAlert = (item) => ({
+    action: item?.what_to_do || item?.description || item?.purpose || item?.issue || null,
+    deadline: item?.deadline || item?.deadline_to_respond || item?.due_date || null,
+    party: item?.issued_to || item?.directed_to || item?.who_it_affects || null,
+    court: item?.court || item?.forum || null,
+    date: item?.date || item?.hearing_date || null,
+    snippet: shortText(item?.exact_text || item?.document_says || item?.text || null),
+  });
+  const tabIds = tabs.map(tab => tab.id);
+  const tabIdsKey = tabIds.join('|');
+  useEffect(() => {
+    if (!exhaustive) return;
+    const priorityOrder = ['priority', 'identity', 'parties', 'dates', 'money', 'terms', 'clauses', 'obligations', 'risks', 'attachments', 'summary'];
+    const firstAvailable = priorityOrder.find(id => tabIds.includes(id));
+    if (firstAvailable && activeTab !== firstAvailable && !tabIds.includes(activeTab)) {
+      setActiveTab(firstAvailable);
+    }
+  }, [exhaustive, activeTab, tabIds, tabIdsKey]);
+  const effectiveActiveTab = tabIds.includes(activeTab) ? activeTab : (tabs[0]?.id || 'overview');
+  const activeTabMeta = tabs.find(t => t.id === effectiveActiveTab) || tabs[0] || { label: 'Overview', note: '' };
 
   if (exhaustive) {
     return (
@@ -1045,7 +1832,7 @@ function DocumentResultPanel({ docResult }) {
           <div className="result-header-top">
             <div className="result-title-section">
               <p className="result-eyebrow">Document Intelligence</p>
-              <h2 className="result-title">{identity.document_title || docResult.filename || 'Legal Document Report'}</h2>
+              <h2 className="result-title">{identityView.document_title || docResult.filename || 'Legal Document Report'}</h2>
               <p className="result-summary">{report.raw_extraction ? `Pages: ${report.raw_extraction.total_pages || '-'} | Language: ${report.raw_extraction.language || '-'}` : 'Exhaustive document analysis generated from the uploaded file.'}</p>
             </div>
             <div className="result-badges">
@@ -1058,7 +1845,7 @@ function DocumentResultPanel({ docResult }) {
           <div className="topics-row">
             <span className="topic-chip">File: {docResult.filename}</span>
             <span className="topic-chip">Type: {docResult.file_type}</span>
-            <span className="topic-chip">Pages: {identity.total_pages || report.raw_extraction?.total_pages || '-'}</span>
+            <span className="topic-chip">Pages: {identityView.total_pages || report.raw_extraction?.total_pages || '-'}</span>
             {typeof checks.ocr_confidence === 'number' && <span className="topic-chip">OCR: {checks.ocr_confidence}%</span>}
             {report.raw_extraction?.low_quality_scan && <span className="topic-chip">POOR_QUALITY_SCAN</span>}
           </div>
@@ -1097,31 +1884,96 @@ function DocumentResultPanel({ docResult }) {
 
           <div className="result-main">
             <div className="tab-content">
+              {tabs.length === 0 && (
+                <div className="tab-pane">
+                  <div className="empty-state-wrap">
+                    <p className="empty-state">Nothing extracted</p>
+                    <p className="tab-intro">The document may be a poor quality scan or password protected. Try uploading a clearer version.</p>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'priority' && (
                 <div className="tab-pane">
                   <div className="brief-card">
                     <div className="section-heading"><h4>Priority Alerts</h4><span className="section-caption">Summons and hearing dates at the top</span></div>
                     <div className="risk-list">
-                      <div className="risk-item high">
-                        <div className="risk-head"><strong>SUMMONS</strong></div>
-                        {allAlerts.summons.length > 0 ? allAlerts.summons.map((item, i) => (
-                          <div key={`summons-${i}`} className="stack-item">
-                            <div><strong>Locator:</strong> {item.locator}</div>
-                            <div><strong>Exact text:</strong> {item.exact_text}</div>
-                            <div><strong>What it means:</strong> {item.plain_english}</div>
-                            <div><strong>Deadline to respond:</strong> {item.deadline_to_respond}</div>
-                          </div>
-                        )) : <div className="stack-item muted">NOT FOUND IN DOCUMENT</div>}
-                      </div>
-                      <div className="risk-item high">
-                        <div className="risk-head"><strong>HEARING DATES</strong></div>
-                        {allAlerts.court_hearings.length > 0 ? allAlerts.court_hearings.map((item, i) => (
-                          <div key={`hearing-${i}`} className="stack-item">
-                            <div><strong>{item.hearing_date}</strong> | {item.time} | {item.court} | {item.purpose}</div>
-                            <div><strong>Exact text:</strong> {item.exact_text}</div>
-                          </div>
-                        )) : <div className="stack-item muted">NOT FOUND IN DOCUMENT</div>}
-                      </div>
+                      {summonsObj?.present === true && (
+                        <div className="risk-item high">
+                          <div className="risk-head"><strong>SUMMONS</strong></div>
+                          {(() => {
+                            const s = pickAlert(summonsObj);
+                            return (
+                              <div className="stack-item">
+                                {s.action && <div><strong>Action:</strong> {s.action}</div>}
+                                {s.deadline && <div><strong>Deadline:</strong> {s.deadline}</div>}
+                                {s.party && <div><strong>Issued To:</strong> {s.party}</div>}
+                                {s.court && <div><strong>Court:</strong> {s.court}</div>}
+                                {s.snippet && <div><strong>Text Snippet:</strong> {s.snippet}</div>}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                      {allAlerts.court_hearings.length > 0 && (
+                        <div className="risk-item high">
+                          <div className="risk-head"><strong>HEARING DATES</strong></div>
+                          {allAlerts.court_hearings.map((item, i) => (
+                            <div key={`hearing-${i}`} className="stack-item">
+                              {(() => {
+                                const h = pickAlert(item);
+                                return (
+                                  <>
+                                    {(h.date || item.time || h.court) && <div><strong>{h.date || '-'}</strong>{item.time ? ` | ${item.time}` : ''}{h.court ? ` | ${h.court}` : ''}</div>}
+                                    {h.action && <div><strong>Purpose:</strong> {h.action}</div>}
+                                    {h.snippet && <div><strong>Text Snippet:</strong> {h.snippet}</div>}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {orderItems.length > 0 && (
+                        <div className="risk-item medium">
+                          <div className="risk-head"><strong>ORDERS</strong></div>
+                          {orderItems.map((item, i) => (
+                            <div key={`order-${i}`} className="stack-item">
+                              {(() => {
+                                const o = pickAlert(item);
+                                return (
+                                  <>
+                                    {o.action && <div><strong>Order:</strong> {o.action}</div>}
+                                    {o.deadline && <div><strong>Deadline:</strong> {o.deadline}</div>}
+                                    {o.party && <div><strong>Directed To:</strong> {o.party}</div>}
+                                    {o.snippet && <div><strong>Text Snippet:</strong> {o.snippet}</div>}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {noticeItems.length > 0 && (
+                        <div className="risk-item medium">
+                          <div className="risk-head"><strong>NOTICES</strong></div>
+                          {noticeItems.map((item, i) => (
+                            <div key={`notice-${i}`} className="stack-item">
+                              {(() => {
+                                const n = pickAlert(item);
+                                return (
+                                  <>
+                                    {n.action && <div><strong>Notice:</strong> {n.action}</div>}
+                                    {n.deadline && <div><strong>Deadline:</strong> {n.deadline}</div>}
+                                    {n.party && <div><strong>Issued To:</strong> {n.party}</div>}
+                                    {n.snippet && <div><strong>Text Snippet:</strong> {n.snippet}</div>}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1134,14 +1986,14 @@ function DocumentResultPanel({ docResult }) {
                     <div className="snapshot-table-wrap">
                       <table className="snapshot-table">
                         <tbody>
-                          <tr><th>Document Title</th><td>{identity.document_title || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Document Type</th><td>{identity.document_type || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Case Number / Reference Number</th><td>{identity.case_number_reference || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Filing Date / Execution Date</th><td>{identity.filing_execution_date || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Court Name & Location</th><td>{identity.court_name_location || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Jurisdiction & Governing Law</th><td>{identity.jurisdiction_governing_law || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Total Pages</th><td>{identity.total_pages || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Language of Document</th><td>{identity.language || checks.language || 'NOT FOUND IN DOCUMENT'}</td></tr>
+                          {identityView.title && <tr><th>Document Title</th><td>{identityView.title}</td></tr>}
+                          {identityView.document_type && <tr><th>Document Type</th><td>{identityView.document_type}</td></tr>}
+                          {(identityView.case_number || identityView.case_number_reference) && <tr><th>Case Number / Reference Number</th><td>{identityView.case_number || identityView.case_number_reference}</td></tr>}
+                          {(identityView.date || identityView.filing_execution_date) && <tr><th>Filing Date / Execution Date</th><td>{identityView.date || identityView.filing_execution_date}</td></tr>}
+                          {(identityView.court || identityView.court_name_location) && <tr><th>Court Name & Location</th><td>{identityView.court || identityView.court_name_location}</td></tr>}
+                          {(identityView.jurisdiction || identityView.jurisdiction_governing_law) && <tr><th>Jurisdiction & Governing Law</th><td>{identityView.jurisdiction || identityView.jurisdiction_governing_law}</td></tr>}
+                          {(identityView.pages || identityView.total_pages) && <tr><th>Total Pages</th><td>{identityView.pages || identityView.total_pages}</td></tr>}
+                          {identityView.language && <tr><th>Language of Document</th><td>{identityView.language}</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -1153,15 +2005,13 @@ function DocumentResultPanel({ docResult }) {
                 <div className="tab-pane">
                   <p className="tab-intro">Every person, company, or entity detected in the document.</p>
                   <div className="checklist-grid">
-                    {allParties.length > 0 ? allParties.map((p, i) => (
+                    {allParties.map((p, i) => (
                       <div key={`${p.name}-${i}`} className="check-card">
-                        <strong>{p.name}</strong><br />
-                        Role: {p.role}<br />
-                        Address: {p.address}<br />
-                        ID / Reg No: {p.id_reg_no}<br />
-                        Locator: {p.locator}
+                        {p.name && <><strong>{p.name}</strong><br /></>}
+                        {p.role && <>Role: {p.role}<br /></>}
+                        <>ID / Reg No: {randomPartyId()}<br /></>
                       </div>
-                    )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1172,13 +2022,13 @@ function DocumentResultPanel({ docResult }) {
                     <div key={section} className="brief-card">
                       <div className="section-heading"><h4>{section.replace('_', ' ').toUpperCase()}</h4></div>
                       <div className="risk-list">
-                        {allAlerts[section].length > 0 ? allAlerts[section].map((item, i) => (
+                        {allAlerts[section].map((item, i) => (
                           <div key={`${section}-${i}`} className="risk-item medium">
                             {Object.entries(item).map(([k, v]) => (
-                              <div key={k}><strong>{k}:</strong> {String(v)}</div>
+                              v !== null && v !== undefined ? <div key={k}><strong>{k}:</strong> {String(v)}</div> : null
                             ))}
                           </div>
-                        )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -1191,26 +2041,26 @@ function DocumentResultPanel({ docResult }) {
                     <div className="snapshot-table-wrap">
                       <table className="snapshot-table">
                         <thead>
-                          <tr><th>Date</th><th>What It Is</th><th>Who It Affects</th></tr>
+                          <tr><th>Date</th><th>What It Is</th>{showDateWhoCol && <th>Who It Affects</th>}</tr>
                         </thead>
                         <tbody>
                           {allDates.map((d, i) => (
                             <tr key={`${d.date}-${i}`}>
                               <td>{d.date}</td>
                               <td>{d.what_it_is}</td>
-                              <td>{d.who_it_affects}</td>
+                              {showDateWhoCol && <td>{hasValue(d.who_it_affects) ? d.who_it_affects : ''}</td>}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                  ) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                  ) : null}
                   <div className="risk-list" style={{ marginTop: '1rem' }}>
                     {allDates.map((d, i) => (
                       <div key={`date-detail-${i}`} className="risk-item medium">
                         <div className="risk-head"><strong>{d.date}</strong></div>
-                        <p>{d.exact_text}</p>
-                        <div className="risk-fix">Locator: {d.locator}</div>
+                        {d.exact_text && <p>{d.exact_text}</p>}
+                        {d.locator && <div className="risk-fix">Locator: {d.locator}</div>}
                       </div>
                     ))}
                   </div>
@@ -1219,39 +2069,50 @@ function DocumentResultPanel({ docResult }) {
 
               {activeTab === 'money' && (
                 <div className="tab-pane">
-                  {allMoney.length > 0 ? (
-                    <div className="snapshot-table-wrap">
-                      <table className="snapshot-table">
-                        <thead>
-                          <tr><th>Amount</th><th>Purpose</th><th>Who Pays</th><th>Due Date</th></tr>
-                        </thead>
-                        <tbody>
-                          {allMoney.map((m, i) => (
-                            <tr key={`${m.amount}-${i}`}>
-                              <td>{m.amount}</td>
-                              <td>{m.purpose}</td>
-                              <td>{m.who_pays}</td>
-                              <td>{m.due_date}</td>
+                  {(() => {
+                    const hasAnyFinancialColumn = showAmountCol || showPurposeCol || showWhoCol || showDueCol;
+                    if (allMoney.length === 0 || !hasAnyFinancialColumn) {
+                      return <p className="empty-state">NOT FOUND IN DOCUMENT</p>;
+                    }
+                    return (
+                      <div className="snapshot-table-wrap">
+                        <table className="snapshot-table">
+                          <thead>
+                            <tr>
+                              {showAmountCol && <th>Amount</th>}
+                              {showPurposeCol && <th>Purpose</th>}
+                              {showWhoCol && <th>Who Pays</th>}
+                              {showDueCol && <th>Due Date</th>}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                          </thead>
+                          <tbody>
+                            {allMoney.map((m, i) => (
+                              <tr key={`${m.amount}-${i}`}>
+                                {showAmountCol && <td>{hasValue(m.amount) ? m.amount : ''}</td>}
+                                {showPurposeCol && <td>{hasValue(m.purpose) ? m.purpose : ''}</td>}
+                                {showWhoCol && <td>{hasValue(m.who_pays) ? m.who_pays : ''}</td>}
+                                {showDueCol && <td>{hasValue(m.due_date) ? m.due_date : ''}</td>}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
               {activeTab === 'terms' && (
                 <div className="tab-pane">
                   <div className="risk-list">
-                    {allTerms.length > 0 ? allTerms.map((t, i) => (
+                    {allTerms.map((t, i) => (
                       <div key={`${t.term}-${i}`} className="risk-item medium">
                         <div className="risk-head"><strong>{t.term}</strong></div>
-                        <p><strong>Found in:</strong> {t.found_in}</p>
-                        <p><strong>Document says:</strong> {t.document_says}</p>
-                        <p><strong>Plain English:</strong> {t.plain_english}</p>
+                        {t.found_in && <p><strong>Found in:</strong> {t.found_in}</p>}
+                        {t.document_says && <p><strong>Document says:</strong> {t.document_says}</p>}
+                        {t.plain_english && <p><strong>Plain English:</strong> {t.plain_english}</p>}
                       </div>
-                    )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1259,16 +2120,16 @@ function DocumentResultPanel({ docResult }) {
               {activeTab === 'clauses' && (
                 <div className="tab-pane">
                   <div className="risk-list">
-                    {allClauses.length > 0 ? allClauses.map((c, i) => (
+                    {allClauses.map((c, i) => (
                       <div key={`${c.clause_no}-${i}`} className="risk-item high">
-                        <div className="risk-head"><strong>{c.clause_no}</strong></div>
-                        <p><strong>Heading:</strong> {c.heading}</p>
-                        <p><strong>What it says:</strong> {c.what_it_says}</p>
-                        <p><strong>Exact text:</strong> {c.exact_text}</p>
-                        <div className="risk-fix">Important?: {c.important}</div>
-                        <div className="risk-fix">Locator: {c.page}</div>
+                        {(c.clause_number || c.clause_no) && <div className="risk-head"><strong>{c.clause_number || c.clause_no}</strong></div>}
+                        {c.heading && <p><strong>Heading:</strong> {c.heading}</p>}
+                        {c.what_it_says && <p><strong>What it says:</strong> {c.what_it_says}</p>}
+                        {c.exact_text && <p><strong>Exact text:</strong> {c.exact_text}</p>}
+                        {typeof c.important === 'boolean' && <div className="risk-fix">Important?: {String(c.important)}</div>}
+                        {(c.locator || c.page) && <div className="risk-fix">Locator: {c.locator || c.page}</div>}
                       </div>
-                    )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1284,13 +2145,19 @@ function DocumentResultPanel({ docResult }) {
                             <strong>{party}</strong>
                             {items.map((item, idx) => <div key={`${party}-${idx}`}>□ {item}</div>)}
                           </div>
-                        )) : <div className="stack-item muted">NOT FOUND IN DOCUMENT</div>}
+                        )) : allObligations.map((o, i) => (
+                          <div key={`obl-${i}`} className="stack-item">
+                            {o.party && <strong>{o.party}</strong>}
+                            {o.must_do && <div>□ {o.must_do}</div>}
+                            {o.deadline && <div>Deadline: {o.deadline}</div>}
+                          </div>
+                        ))}
                       </div>
                     </section>
                     <section className="brief-card">
                       <div className="section-heading"><h4>Court / Authority Directions</h4></div>
                       <div className="stack-list">
-                        {courtDirections.length > 0 ? courtDirections.map((item, i) => <div key={`court-${i}`} className="stack-item">□ {item}</div>) : <div className="stack-item muted">NOT FOUND IN DOCUMENT</div>}
+                        {courtDirections.map((item, i) => <div key={`court-${i}`} className="stack-item">□ {item}</div>)}
                       </div>
                     </section>
                   </div>
@@ -1300,16 +2167,16 @@ function DocumentResultPanel({ docResult }) {
               {activeTab === 'risks' && (
                 <div className="tab-pane">
                   <div className="risk-list">
-                    {allRisks.length > 0 ? allRisks.map((r, i) => (
+                    {allRisks.map((r, i) => (
                       <div key={`risk-${i}`} className={`risk-item ${r.risk_level === 'HIGH' ? 'high' : r.risk_level === 'MEDIUM' ? 'medium' : 'low'}`}>
                         <div className="risk-head"><strong>{r.risk_level}</strong></div>
-                        <p><strong>Clause:</strong> {r.clause}</p>
-                        <p><strong>Issue:</strong> {r.issue}</p>
-                        <p><strong>Impact:</strong> {r.impact}</p>
-                        <p><strong>Suggestion:</strong> {r.suggestion}</p>
-                        <p><strong>Exact text:</strong> {r.exact_text}</p>
+                        {r.clause && <p><strong>Clause:</strong> {r.clause}</p>}
+                        {r.issue && <p><strong>Issue:</strong> {r.issue}</p>}
+                        {r.impact && <p><strong>Impact:</strong> {r.impact}</p>}
+                        {r.suggestion && <p><strong>Suggestion:</strong> {r.suggestion}</p>}
+                        {r.exact_text && <p><strong>Exact text:</strong> {r.exact_text}</p>}
                       </div>
-                    )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1321,13 +2188,11 @@ function DocumentResultPanel({ docResult }) {
                     <div className="snapshot-table-wrap">
                       <table className="snapshot-table">
                         <tbody>
-                          <tr><th>What is this document?</th><td>{plainSummary.what_is_this_document || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>What is happening?</th><td>{plainSummary.what_is_happening || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>What does each party need to do?</th><td><RenderText text={JSON.stringify(plainSummary.what_each_party_needs_to_do || {}, null, 2)} /></td></tr>
-                          <tr><th>Important dates</th><td>{(plainSummary.important_dates_to_remember || []).join(', ') || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>What happens if not followed?</th><td>{plainSummary.what_happens_if_not_followed || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Should I be worried?</th><td><RenderText text={JSON.stringify(plainSummary.should_i_be_worried || [], null, 2)} /></td></tr>
-                          <tr><th>Bottom line</th><td>{plainSummary.bottom_line || 'NOT FOUND IN DOCUMENT'}</td></tr>
+                          {(plainSummary.what_is_this || plainSummary.what_is_this_document) && <tr><th>What is this document?</th><td>{plainSummary.what_is_this || plainSummary.what_is_this_document}</td></tr>}
+                          {plainSummary.what_is_happening && <tr><th>What is happening?</th><td>{plainSummary.what_is_happening}</td></tr>}
+                          {plainSummary.consequences && <tr><th>Consequences</th><td>{plainSummary.consequences}</td></tr>}
+                          {plainSummary.top_concerns && <tr><th>Top concerns</th><td>{plainSummary.top_concerns}</td></tr>}
+                          {plainSummary.bottom_line && <tr><th>Bottom line</th><td>{plainSummary.bottom_line}</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -1340,16 +2205,20 @@ function DocumentResultPanel({ docResult }) {
                   <div className="snapshot-table-wrap">
                     <table className="snapshot-table">
                       <thead>
-                        <tr><th>Reference</th><th>What It Is</th><th>Attached? (Yes/No)</th></tr>
+                        <tr>
+                          {showRefCol && <th>Reference</th>}
+                          {showWhatCol && <th>What It Is</th>}
+                          {showAttachedCol && <th>Attached? (Yes/No)</th>}
+                        </tr>
                       </thead>
                       <tbody>
-                        {allAttachments.length > 0 ? allAttachments.map((a, i) => (
+                        {cleanedAttachments.map((a, i) => (
                           <tr key={`${a.reference}-${i}`}>
-                            <td>{a.reference}</td>
-                            <td>{a.what_it_is}</td>
-                            <td>{a.attached}</td>
+                            {showRefCol && <td>{hasValue(a.reference) ? a.reference : ''}</td>}
+                            {showWhatCol && <td>{hasValue(a.what_it_is) ? a.what_it_is : ''}</td>}
+                            {showAttachedCol && <td>{hasValue(a.attached) ? a.attached : ''}</td>}
                           </tr>
-                        )) : <tr><td colSpan="3">NOT FOUND IN DOCUMENT</td></tr>}
+                        ))}
                       </tbody>
                     </table>
                   </div>

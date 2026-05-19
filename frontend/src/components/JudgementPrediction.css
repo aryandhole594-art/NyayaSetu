@@ -39,8 +39,12 @@
   max-width: 780px;
   margin: 0;
   color: #ffffff;
-  font-size: clamp(2.15rem, 4.6vw, 4.1rem);
+  font-size: clamp(1.85rem, 3.6vw, 3.2rem);
   line-height: 1;
+}
+
+.jp-highlight {
+  color: #5fa8ff;
 }
 
 .jp-hero p {
@@ -81,6 +85,33 @@
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.055);
   border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.jp-module-list {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #dbeafe;
+  font-size: 0.95rem;
+}
+
+.jp-module-list li {
+  position: relative;
+  padding-left: 18px;
+  line-height: 1.55;
+}
+
+.jp-module-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5fa8ff;
 }
 
 .jp-module-score {
