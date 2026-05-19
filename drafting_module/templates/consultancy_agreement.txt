@@ -1,6 +1,6 @@
 CONSULTANCY AGREEMENT
 Date: {{date}} Place: {{city_state}}
-BETWE0N:
+BETWEEN:
 1. {{Client_Name}} / {{Company_Name}}, having its office at {{address}} (hereinafter referred to as the 'Client')
 2. {{Consultant_Name}}, having its office at {{address}} (hereinafter referred to as the 'Consultant')
 WHEREAS:

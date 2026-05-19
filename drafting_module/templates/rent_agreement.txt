@@ -1,6 +1,6 @@
 LEAVE AND LICENCE AGREEMENT
 Date: {{date}} Place: {{city_state}}
-BETWE0N:
+BETWEEN:
 1. {{licensor_full_name}}, aged {{{{licensor_age}}}} years, residing at {{{{licensor_address}}}} (hereinafter referred to as the 'LICENSOR')
 2. {{licensee_full_name}}, aged {{{{licensee_age}}}} years, residing at {{{{licensee_address}}}} (hereinafter referred to as the 'LICENSEE')
 WHEREAS:

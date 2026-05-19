@@ -1,6 +1,6 @@
 VENDOR AGREEMENT
 Date: {{date}} Place: {{city_state}}
-BETWE0N:
+BETWEEN:
 1. {{buyer_company_name}}, having its office at {{{{address}}}} (hereinafter referred to as the 'Buyer')
 2. {{vendor_company_name}}, having its office at {{{{address}}}} (hereinaforthreferred to as the 
 'Vendor')

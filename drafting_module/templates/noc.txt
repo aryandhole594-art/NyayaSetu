@@ -1,7 +1,7 @@
 NO OBJECTION CERTIFICATE
 Date: {{date}}
 Place: {{city}}, {{state}}
-BETWE0N:
+BETWEEN:
 1. {{issuing_party_name}}, having its office at {{address}} (hereinafter referred to as the 'Issuer')
 TO WHOM IT MAY CONCERN,
 This is to certify that {{issuing_party_name}} has No Objection to {{name_of_person}}, son/daughter of {{parent_name}}, bearing ID Type No. {{id_number}}, for the purpose of {{state specific purpose}}.
