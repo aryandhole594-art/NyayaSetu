@@ -90,22 +90,24 @@ function JudgementPrediction() {
       <section className="jp-hero">
         <div className="jp-hero-copy">
           <span className="jp-kicker">Judgement Predictor Module</span>
-          <h1>Understand how similar cases have usually ended.</h1>
+          <h1>Compare your scenario with similar <span className="jp-highlight">court hearings</span></h1>
           <p>
-            Paste your case facts and NyayaSetu compares them with past judgments to
-            estimate whether your matter looks likely to succeed, partly succeed, or face difficulty.
+            Share the facts and NyayaSetu surfaces comparable rulings and patterns to guide your next steps.
           </p>
-          <div className="jp-proof-row">
-            <span>Similar court decisions</span>
-            <span>Plain-language outcome</span>
-            <span>Practical next steps</span>
-          </div>
         </div>
         <div className="jp-module-card">
-          <span className="jp-section-label">Current Run</span>
-          <div className="jp-module-score">{prediction ? `${prediction.success_probability}%` : '--'}</div>
-          <strong>{prediction ? outcomeLabel(prediction.predicted_outcome) : 'Ready for facts'}</strong>
-          <p>{prediction ? estimateStrength(prediction.confidence) : 'Your result will appear here after you describe the dispute.'}</p>
+          <span className="jp-section-label">What you get</span>
+          {prediction && <strong>{`Outcome snapshot: ${prediction.predicted_outcome}`}</strong>}
+          <p>
+            {prediction
+              ? `${prediction.success_probability}% likelihood based on similar hearings.`
+              : 'Submit your facts to see outcome trends, risks, and next steps.'}
+          </p>
+          <ul className="jp-module-list">
+            <li>Similar hearing highlights and outcomes</li>
+            <li>Do / avoid guidance grounded in precedents</li>
+            <li>Evidence checklist to strengthen your position</li>
+          </ul>
         </div>
       </section>
 
@@ -116,7 +118,7 @@ function JudgementPrediction() {
               <span className="jp-section-label">Case Facts</span>
               <h2>Describe the dispute</h2>
             </div>
-            <span className="jp-live-pill">Private case check</span>
+            <span className="jp-live-pill">Local precedents</span>
           </div>
           <textarea
             value={facts}
@@ -146,7 +148,8 @@ function JudgementPrediction() {
             <div className="jp-loader">
               <div className="jp-loader-ring" />
               <h3>Reading precedents</h3>
-              <p>Comparing your facts with similar court decisions and preparing a plain-language result.</p>
+              <p>Retrieving similar hearings and comparing outcomes.</p>
+              <p>Retrieving similar hearings and comparing outcomes.</p>
             </div>
           ) : prediction ? (
             <PredictionResult
