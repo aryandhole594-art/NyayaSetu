@@ -252,6 +252,29 @@
   color: #cbd5e1;
 }
 
+.jp-more-cases {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.jp-more-cases:hover:not(:disabled) {
+  border-color: rgba(14, 165, 233, 0.42);
+  background: rgba(14, 165, 233, 0.14);
+}
+
+.jp-more-cases:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .jp-error {
   margin-top: 12px;
   padding: 12px;

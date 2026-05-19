@@ -20,17 +20,49 @@ function outcomeClass(outcome) {
   return String(outcome || 'uncertain').toLowerCase();
 }
 
+function outcomeLabel(outcome) {
+  const normalized = String(outcome || '').toUpperCase();
+  if (normalized === 'ALLOWED') return 'Likely to succeed';
+  if (normalized === 'PARTIAL') return 'May succeed partly';
+  if (normalized === 'DISMISSED') return 'May be rejected';
+  return 'Needs more information';
+}
+
+function estimateStrength(confidence) {
+  const value = Number(confidence) || 0;
+  if (value >= 80) return 'Strong match with past cases';
+  if (value >= 60) return 'Good match with past cases';
+  if (value >= 40) return 'Some matching past cases';
+  return 'Limited matching past cases';
+}
+
+function verdictLabel(verdict) {
+  return outcomeLabel(verdict);
+}
+
+function friendlyPlainEnglish(text) {
+  return String(text || '')
+    .replace(/\bALLOWED\b/g, 'likely to succeed')
+    .replace(/\bPARTIAL\b/g, 'may succeed partly')
+    .replace(/\bDISMISSED\b/g, 'may be rejected')
+    .replace(/\bUNCERTAIN\b/g, 'needs more information')
+    .replace(/\bcase_corpus\b/g, 'past case records')
+    .replace(/\bconfidence\b/gi, 'estimate strength');
+}
+
 function JudgementPrediction() {
   const [facts, setFacts] = useState('');
   const [prediction, setPrediction] = useState(null);
+  const [caseCount, setCaseCount] = useState(5);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const runPrediction = async () => {
+  const runPrediction = async (requestedCaseCount = caseCount) => {
     if (!facts.trim()) {
       setError('Describe the material facts before running prediction.');
       return;
     }
+    const nextCaseCount = Math.max(5, Math.min(20, requestedCaseCount));
     setLoading(true);
     setError('');
     setPrediction(null);
@@ -38,12 +70,13 @@ function JudgementPrediction() {
       const response = await fetch('http://127.0.0.1:5555/judgement-prediction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ facts }),
+        body: JSON.stringify({ facts, case_count: nextCaseCount }),
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || 'Prediction failed.');
       }
+      setCaseCount(nextCaseCount);
       setPrediction(data);
     } catch (err) {
       setError(err.message || 'Cannot connect to judgement prediction backend.');
@@ -64,7 +97,7 @@ function JudgementPrediction() {
         </div>
         <div className="jp-module-card">
           <span className="jp-section-label">What you get</span>
-          <strong>{prediction ? `Outcome snapshot: ${prediction.predicted_outcome}` : ''}</strong>
+          {prediction && <strong>{`Outcome snapshot: ${prediction.predicted_outcome}`}</strong>}
           <p>
             {prediction
               ? `${prediction.success_probability}% likelihood based on similar hearings.`
@@ -93,10 +126,10 @@ function JudgementPrediction() {
             placeholder="Example: I bought a washing machine under warranty. It failed within four months, the company ignored service requests, and I want refund or replacement..."
           />
           <div className="jp-actions">
-            <button type="button" onClick={runPrediction} disabled={loading}>
+            <button type="button" onClick={() => runPrediction(5)} disabled={loading}>
               {loading ? 'Predicting...' : 'Predict Judgement'}
             </button>
-            <button type="button" className="jp-clear" onClick={() => { setFacts(''); setPrediction(null); }}>
+            <button type="button" className="jp-clear" onClick={() => { setFacts(''); setPrediction(null); setCaseCount(5); }}>
               Clear
             </button>
           </div>
@@ -116,14 +149,19 @@ function JudgementPrediction() {
               <div className="jp-loader-ring" />
               <h3>Reading precedents</h3>
               <p>Retrieving similar hearings and comparing outcomes.</p>
+              <p>Retrieving similar hearings and comparing outcomes.</p>
             </div>
           ) : prediction ? (
-            <PredictionResult prediction={prediction} />
+            <PredictionResult
+              prediction={prediction}
+              loading={loading}
+              onShowMore={() => runPrediction((prediction.similar_cases?.length || caseCount) + 5)}
+            />
           ) : (
             <div className="jp-empty">
               <span>01</span>
               <h3>Awaiting facts</h3>
-              <p>The prediction will show similar cases, do and avoid guidance, misconceptions, and corpus stats.</p>
+              <p>The prediction will show a likely outcome, similar cases, practical steps, and points to be careful about.</p>
             </div>
           )}
         </div>
@@ -132,30 +170,33 @@ function JudgementPrediction() {
   );
 }
 
-function PredictionResult({ prediction }) {
+function PredictionResult({ prediction, onShowMore, loading }) {
   const doItems = prediction.do_this?.length ? prediction.do_this : prediction.recommended_actions;
   const avoidItems = prediction.avoid_this?.length ? prediction.avoid_this : prediction.risk_factors;
+  const retrieved = prediction.corpus_stats?.cases_retrieved || prediction.similar_cases?.length || 0;
+  const loaded = prediction.corpus_stats?.cases_loaded || 0;
+  const canShowMore = retrieved < Math.min(20, loaded || 20);
 
   return (
     <div className="jp-result">
       <div className={`jp-outcome ${outcomeClass(prediction.predicted_outcome)}`}>
-        <span>Predicted outcome</span>
-        <strong>{prediction.predicted_outcome}</strong>
+        <span>Likely result</span>
+        <strong>{outcomeLabel(prediction.predicted_outcome)}</strong>
         <p>{prediction.issue_identified}</p>
       </div>
 
       <div className="jp-metrics">
-        <Metric label="Success probability" value={`${prediction.success_probability}%`} />
-        <Metric label="Confidence" value={`${prediction.confidence}%`} />
-        <Metric label="Cases searched" value={prediction.corpus_stats?.cases_loaded || '0'} />
+        <Metric label="Chance of a favourable result" value={`${prediction.success_probability}%`} />
+        <Metric label="Strength of the estimate" value={estimateStrength(prediction.confidence)} />
+        <Metric label="Past cases checked" value={prediction.corpus_stats?.cases_loaded || '0'} />
       </div>
 
       <section className="jp-note full">
         <span className="jp-section-label">Plain English</span>
-        <p>{prediction.plain_english}</p>
+        <p>{friendlyPlainEnglish(prediction.plain_english)}</p>
       </section>
 
-      <SimilarCases cases={prediction.similar_cases || []} />
+      <SimilarCases cases={prediction.similar_cases || []} onShowMore={onShowMore} canShowMore={canShowMore} loading={loading} />
 
       <section className="jp-decision-grid full">
         <ListCard title="Do this" items={doItems} tone="green" />
@@ -172,7 +213,7 @@ function PredictionResult({ prediction }) {
               <div key={`${item.source_file}-${index}`} className="jp-ratio-item">
                 <div>
                   <strong>{item.source_file}</strong>
-                  <span>{item.leans}</span>
+                  <span>{outcomeLabel(item.leans)}</span>
                 </div>
                 <p>{item.principle}</p>
                 <small>{item.comparison}</small>
@@ -210,7 +251,7 @@ function ListCard({ title, items = [], tone }) {
   );
 }
 
-function SimilarCases({ cases }) {
+function SimilarCases({ cases, onShowMore, canShowMore, loading }) {
   return (
     <section className="jp-note full">
       <span className="jp-section-label">Similar cases decided by courts</span>
@@ -225,7 +266,7 @@ function SimilarCases({ cases }) {
               </div>
               {item.case_verdict && (
                 <div className={`jp-case-verdict ${String(item.case_verdict).toLowerCase()}`}>
-                  Case verdict: {item.case_verdict}
+                  Court result: {verdictLabel(item.case_verdict)}
                 </div>
               )}
               <h4>{item.title}</h4>
@@ -233,11 +274,16 @@ function SimilarCases({ cases }) {
               <div className="jp-match-track">
                 <span style={{ width: `${Math.max(8, percent)}%` }} />
               </div>
-              <small>{percent}% similar to your situation</small>
+              <small>{percent}% fact match with your situation</small>
             </article>
           );
         })}
       </div>
+      {canShowMore && (
+        <button type="button" className="jp-more-cases" onClick={onShowMore} disabled={loading}>
+          {loading ? 'Finding more cases...' : `Show more similar cases`}
+        </button>
+      )}
     </section>
   );
 }
@@ -266,10 +312,10 @@ function Misconceptions({ items }) {
 
 function StatsStrip({ prediction }) {
   const stats = [
-    ['Corpus used', prediction.corpus_stats?.source || 'Local corpus'],
-    ['Chunks retrieved', `${prediction.corpus_stats?.cases_retrieved || 0} / ${prediction.corpus_stats?.cases_loaded || 0}`],
-    ['Confidence', `${prediction.confidence}%`],
-    ['Limitation period', prediction.limitation_period || 'Verify'],
+    ['Past cases shown', `${prediction.corpus_stats?.cases_retrieved || 0}`],
+    ['Past cases available', `${prediction.corpus_stats?.cases_loaded || 0}`],
+    ['Estimate strength', estimateStrength(prediction.confidence)],
+    ['Time limit', prediction.limitation_period || 'Verify with a lawyer'],
   ];
   return (
     <section className="jp-stats-strip full">
