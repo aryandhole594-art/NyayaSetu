@@ -4,8 +4,28 @@ const NyayaSetuBot = {
   conversationHistory: [],
   init() {
     this.bindEvents();
-    this.checkFirstVisit();
+    const hasSession = this.loadSession();
+    if (!hasSession) {
+      this.checkFirstVisit();
+    }
     this.setupPageContextTriggers();
+  },
+  loadSession() {
+    const html = sessionStorage.getItem("ns_chat_html");
+    if (html) {
+      const box = document.getElementById("ns-msgs");
+      if (box) {
+        box.innerHTML = html;
+        box.scrollTop = box.scrollHeight;
+      }
+      const history = sessionStorage.getItem("ns_chat_history");
+      if (history) this.conversationHistory = JSON.parse(history);
+      return true;
+    }
+    return false;
+  },
+  saveHistory() {
+    sessionStorage.setItem("ns_chat_history", JSON.stringify(this.conversationHistory));
   },
   open() {
     document.getElementById("ns-window").style.display = "flex";
@@ -38,6 +58,7 @@ const NyayaSetuBot = {
     input.value = "";
     BotUI.addMessage("user", BotUI.escape(msg));
     this.conversationHistory.push({ role: "user", content: msg });
+    this.saveHistory();
     BotUI.showTyping();
     const intent = BotIntentClassifier.classify(msg);
     const feature = BotIntentClassifier.detectFeature(msg);
@@ -79,6 +100,7 @@ const NyayaSetuBot = {
       return;
     }
     this.conversationHistory.push({ role: "assistant", content: data.answer });
+    this.saveHistory();
     BotUI.renderLegalAnswer(data);
     if (data.feature_hint && data.feature_hint_message) {
       setTimeout(() => BotUI.addMessage("bot", `💡 ${BotUI.escape(data.feature_hint_message)}`, { chips: (data.quick_actions || []).map(a => a.label) }), 400);

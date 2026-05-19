@@ -59,6 +59,93 @@ const NS_KNOWLEDGE = {
     chips: ["Compare Article 14 and 21", "Compare Article 19 and 21", "Compare Article 32 and 226"],
     nav: "/ai-legal-tools"
   },
+  judgement_predictor: {
+    trigger_phrases: ["judgement predictor", "predict judgement", "predict case", "likely outcome", "what is the outcome", "case predictor", "predict"],
+    title: "Judgement Predictor",
+    what_it_does: "Understand how similar cases have usually ended. Paste your case facts and NyayaSetu compares them with past judgments to estimate whether your matter looks likely to succeed, partly succeed, or face difficulty. It provides similar court decisions, a plain-language outcome, and practical next steps.",
+    how_to_use: ["Click 'Judgement Predictor' in the top navigation", "Describe the dispute (e.g. 'I bought a washing machine under warranty. It failed within four months...')", "Click 'Predict Judgement'", "Review the predicted outcome, similar cases, and practical steps"],
+    bullets: ["Example 1: I bought a defective product and the company ignores me", "Example 2: My employer fired me without notice"],
+    chips: ["What does it predict?", "Show me an example"],
+    nav: "/judgement-prediction"
+  },
+  judgement_predictor_what: {
+    trigger_phrases: ["what does it predict", "what does judgement predictor do", "predict what"],
+    title: "What it Predicts",
+    what_it_does: "The Judgement Predictor analyzes your case facts against thousands of historical Indian court judgements. It predicts the likely outcome (Success, Partial Success, or Difficulty), provides similar past cases, and suggests practical next steps.",
+    chips: ["Show me an example", "How to use Judgement Predictor"],
+    nav: "/judgement-prediction"
+  },
+  judgement_predictor_example: {
+    trigger_phrases: ["show me an example", "example situation", "give me an example", "example"],
+    title: "Example Scenarios",
+    what_it_does: "Here are some examples of what you can type into the predictor:",
+    bullets: [
+      "Consumer Issue: 'I bought a defective refrigerator and the company is ignoring my emails.'",
+      "Employment Issue: 'My employer fired me without any prior notice.'",
+      "Property Issue: 'My landlord is trying to evict me without returning my deposit.'"
+    ],
+    chips: ["What does it predict?", "How to use Judgement Predictor"],
+    nav: "/judgement-prediction"
+  },
+  nyayadraft: {
+    trigger_phrases: ["nyayadraft", "draft document", "legal template", "create document", "generate document", "docx", "draft"],
+    title: "NyayaDraft",
+    what_it_does: "Helps you create customized legal documents by filling placeholders in legal templates and downloading them as editable DOCX drafts.",
+    how_to_use: ["Click 'NyayaDraft' in the top navigation", "Choose a legal template from the dropdown or upload a PDF", "Fill each placeholder with case or party details", "Click 'Preview' to see the completed document", "Click 'Download .docx' to get the editable draft"],
+    faqs: [
+      { q: "What templates are available?", a: "We currently offer templates for Affidavit, Consultancy Agreement, Experience Letter, Internship Agreement, NDA, NOC, Offer Letter, Partnership Deed, Power Of Attorney, Rent Agreement, Service Agreement, and Vendor Agreement." }
+    ],
+    chips: ["What templates are available?", "How to use NyayaDraft"],
+    nav: "/nyayadraft"
+  },
+  nyayadraft_templates: {
+    trigger_phrases: ["template", "templates", "what templates", "list of templates", "available templates"],
+    title: "NyayaDraft Templates",
+    what_it_does: "NyayaDraft currently offers the following legal document templates for you to fill and download:",
+    bullets: [
+      "Affidavit",
+      "Consultancy Agreement",
+      "Experience Letter",
+      "Internship Agreement",
+      "NDA (Non-Disclosure Agreement)",
+      "NOC (No Objection Certificate)",
+      "Offer Letter",
+      "Partnership Deed",
+      "Power Of Attorney",
+      "Rent Agreement",
+      "Service Agreement",
+      "Vendor Agreement"
+    ],
+    chips: ["How to use NyayaDraft", "What is NyayaDraft?"],
+    nav: "/nyayadraft"
+  },
+  pdf_summariser: {
+    trigger_phrases: ["pdf summariser", "pdf summarizer", "summarise pdf", "summarize pdf", "document intelligence", "scan document", "upload pdf", "extract clause", "read contract", "summariser", "summarizer"],
+    title: "PDF Summariser",
+    what_it_does: "Upload a PDF, DOCX, or scanned image to extract every clause, date, party, and alert in an exhaustive legal report.",
+    how_to_use: ["Click 'PDF Summariser' in the top navigation", "Click 'Choose File' to select a document (PDF, DOCX, or image)", "Click 'Summarize File'", "Review the extracted report sections, including OCR and document analysis"],
+    chips: ["What documents can I upload?", "How does OCR work?"],
+    nav: "/pdf-summariser"
+  },
+  pdf_summariser_docs: {
+    trigger_phrases: ["what documents can i upload", "supported documents", "file formats", "what can i upload", "what documents"],
+    title: "Supported Documents",
+    what_it_does: "The PDF Summariser supports multiple document formats for extraction:",
+    bullets: [
+      "PDF files (standard text PDFs)",
+      "DOCX (Word documents including paragraphs, tables, and headings)",
+      "Scanned Images (using OCR for images and handwriting)"
+    ],
+    chips: ["How does OCR work?", "How to use PDF Summariser"],
+    nav: "/pdf-summariser"
+  },
+  pdf_summariser_ocr: {
+    trigger_phrases: ["how does ocr work", "what is ocr", "handwriting", "scanned document", "ocr"],
+    title: "How OCR Works",
+    what_it_does: "OCR (Optical Character Recognition) allows the summariser to read text from images. If you upload a scanned PDF, an image file, or even a handwritten document, the OCR engine will scan and extract the text before summarizing it.",
+    chips: ["What documents can I upload?", "How to use PDF Summariser"],
+    nav: "/pdf-summariser"
+  },
   general: {
     trigger_phrases: ["how does this work", "what can you do", "help", "confused", "getting started", "tour", "show me around", "what is this page"],
     title: "Getting Started",
@@ -104,10 +191,13 @@ const NS_KNOWLEDGE = {
     chips: ["How to use correctly", "About NyayaSetu"]
   },
   nyayasetu_tools: {
-    trigger_phrases: ["tools of nyayasetu", "what tools", "nyayasetu features", "show me tools", "list tools", "site features"],
-    title: "Tools of NyayaSetu",
-    overview: "NyayaSetu provides 6 specialized tools to help you navigate the legal system:",
+    trigger_phrases: ["tools of nyayasetu", "what tools", "nyayasetu features", "show me tools", "list tools", "site features", "ai tools", "legal tools", "ai legal tools"],
+    title: "AI Tools of NyayaSetu",
+    overview: "NyayaSetu provides specialized AI legal tools to help you navigate the legal system:",
     tools_summary: [
+      { name: "Judgement Predictor", use: "Predicts the likely outcome of your dispute" },
+      { name: "NyayaDraft", use: "Create customized legal documents from templates" },
+      { name: "PDF Summariser", use: "Extract clauses, dates, and parties from documents" },
       { name: "Fairness Checker", use: "Detect possible rights violations" },
       { name: "Rights Card Generator", use: "Get printable rights for specific scenarios" },
       { name: "Scenario Simulator", use: "Step-by-step walkthrough of legal options" },
@@ -115,7 +205,101 @@ const NS_KNOWLEDGE = {
       { name: "Amendment Tracker", use: "Explore constitutional changes" },
       { name: "Article Comparator", use: "Compare constitutional articles side-by-side" }
     ],
-    chips: ["How to use correctly", "About NyayaSetu"]
+    chips: ["How to use correctly", "About NyayaSetu"],
+    nav: "/ai-legal-tools"
+  },
+  get_advice: {
+    trigger_phrases: ["get advice", "legal advice", "ask question", "legal situation", "domain", "auto-detect domain", "how to ask"],
+    title: "Get Advice",
+    what_it_does: "Turn a legal problem into a court-ready action plan. You can ask any legal question in plain English, and NyayaSetu will retrieve relevant laws and give you a structured brief.",
+    how_to_use: ["Click 'Get Advice' in the navigation", "Optionally select a specific legal domain (like Labour, Family, or Constitutional Law), or leave it as 'Auto-detect Domain'", "Describe your situation in the text box", "Click 'Ask' to get your action plan"],
+    faqs: [
+      { q: "What domains are available?", a: "Constitutional Law, Labour & Employment, Family & Divorce, Property & Tenant, Consumer Protection, and Business Compliance." }
+    ],
+    chips: ["About NyayaSetu", "How to use correctly"],
+    nav: "/legal-advice"
+  },
+  translator: {
+    trigger_phrases: ["translator", "legal translator", "translate", "plain english"],
+    title: "Legal Translator",
+    what_it_does: "The Legal Translator converts complex legal jargon, court notices, or contracts into plain, easy-to-understand English.",
+    how_to_use: ["Navigate to 'AI Tools' then select 'Legal Translator'", "Paste your legal text into the box", "Click Translate"],
+    chips: ["Fairness Checker", "AI Tools"],
+    nav: "/ai-legal-tools"
+  },
+  rights_card: {
+    trigger_phrases: ["rights card", "know my rights", "generate rights card"],
+    title: "Rights Card",
+    what_it_does: "Generates a concise, printable summary of your fundamental and legal rights for specific situations like unlawful arrest, workplace discrimination, or consumer fraud.",
+    how_to_use: ["Navigate to AI Tools > Rights Card", "Select your legal situation", "Get a printable summary of your rights"],
+    chips: ["Fairness Checker", "AI Tools"],
+    nav: "/ai-legal-tools"
+  },
+  fairness_check: {
+    trigger_phrases: ["fairness check", "fairness checker", "unfair", "violation"],
+    title: "Fairness Checker",
+    what_it_does: "Analyzes your situation to detect potential rights violations. It checks your facts against Indian law to tell you if you are being treated unfairly and what legal protections apply.",
+    how_to_use: ["Navigate to AI Tools > Fairness Checker", "Describe what happened to you", "Review the rights violation analysis"],
+    chips: ["Scenario Simulator", "Rights Card"],
+    nav: "/ai-legal-tools"
+  },
+  scenario_simulator: {
+    trigger_phrases: ["scenario simulator", "simulate scenario", "simulate this scenario", "what happens if", "simulate", "scenario"],
+    title: "Scenario Simulator",
+    what_it_does: "Provides a step-by-step procedural walkthrough for legal situations. It tells you what evidence to preserve, what the opposite party cannot legally do, and how to proceed.",
+    how_to_use: ["Navigate to AI Tools > Scenario Simulator", "Describe your issue", "Follow the step-by-step guide"],
+    chips: ["Fairness Checker", "AI Tools"],
+    nav: "/ai-legal-tools"
+  },
+  amendments: {
+    trigger_phrases: ["amendments", "amendment tracker", "article history"],
+    title: "Amendment Tracker",
+    what_it_does: "Tracks changes to the Constitution of India over time. You can see how specific Articles (like Article 21) have been amended and read the historical text.",
+    chips: ["Compare Articles", "AI Tools"],
+    nav: "/ai-legal-tools"
+  },
+  compare_articles: {
+    trigger_phrases: ["compare articles", "article comparator", "difference between", "compare"],
+    title: "Article Comparator",
+    what_it_does: "Allows you to select two Constitutional Articles (e.g., Article 14 and Article 21) and compares them side-by-side to explain their differences and how they interact.",
+    chips: ["Amendment Tracker", "AI Tools"],
+    nav: "/ai-legal-tools"
+  },
+  compare_14_21: {
+    trigger_phrases: ["compare article 14 and 21", "article 14 and 21"],
+    title: "Article 14 vs Article 21",
+    what_it_does: "Here is an example comparison from the Article Comparator:",
+    bullets: [
+      "Article 14: Guarantees equality before the law and equal protection of laws.",
+      "Article 21: Protects life and personal liberty, which cannot be deprived except by procedure established by law.",
+      "Intersection: A procedure under Article 21 must be fair, just, and reasonable, which is the core test of Article 14."
+    ],
+    chips: ["AI Tools", "Compare Article 19 and 21"],
+    nav: "/ai-legal-tools"
+  },
+  compare_19_21: {
+    trigger_phrases: ["compare article 19 and 21", "article 19 and 21"],
+    title: "Article 19 vs Article 21",
+    what_it_does: "Here is an example comparison from the Article Comparator:",
+    bullets: [
+      "Article 19: Provides six freedoms (speech, assembly, etc.) subject to reasonable restrictions.",
+      "Article 21: A broad right to life and liberty.",
+      "Intersection: Laws restricting Article 19 freedoms must also pass the test of Article 21's 'procedure established by law'."
+    ],
+    chips: ["AI Tools", "Compare Article 32 and 226"],
+    nav: "/ai-legal-tools"
+  },
+  compare_32_226: {
+    trigger_phrases: ["compare article 32 and 226", "article 32 and 226"],
+    title: "Article 32 vs Article 226",
+    what_it_does: "Here is an example comparison from the Article Comparator:",
+    bullets: [
+      "Article 32: The right to move the Supreme Court directly for fundamental rights violations.",
+      "Article 226: Gives High Courts the power to issue writs for fundamental rights AND other legal rights.",
+      "Intersection: Article 226 has a wider scope since it covers non-fundamental rights, whereas Article 32 is exclusively for fundamental rights."
+    ],
+    chips: ["AI Tools", "Compare Article 14 and 21"],
+    nav: "/ai-legal-tools"
   }
 };
 

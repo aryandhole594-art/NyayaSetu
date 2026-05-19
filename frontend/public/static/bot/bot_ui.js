@@ -24,15 +24,22 @@ const BotUI = {
     if (options.source) bubble.insertAdjacentHTML("beforeend", this.renderSourceBlock(options.source.label, options.source.text));
     if (options.chips?.length) box.insertAdjacentHTML("beforeend", this.renderChips(options.chips));
     box.scrollTop = box.scrollHeight;
+    this.saveToSession();
   },
   showTyping() {
     if (document.getElementById("ns-typing")) return;
     const box = document.getElementById("ns-msgs");
     box.insertAdjacentHTML("beforeend", `<div id="ns-typing" class="ns-msg-row ns-bot"><div class="ns-avatar">${NS_ICON}</div><div class="ns-typing"><span></span><span></span><span></span></div></div>`);
     box.scrollTop = box.scrollHeight;
+    this.saveToSession();
   },
   removeTyping() {
     document.getElementById("ns-typing")?.remove();
+    this.saveToSession();
+  },
+  saveToSession() {
+    const box = document.getElementById("ns-msgs");
+    if (box) sessionStorage.setItem("ns_chat_html", box.innerHTML);
   },
   renderConfidenceBadge(score) {
     const n = Number(score || 0);
@@ -52,12 +59,14 @@ const BotUI = {
     const steps = (k.how_to_use || []).map((s, i) => `<div class="ns-step"><span class="ns-step-num">${i + 1}</span><span>${this.escape(s)}</span></div>`).join("");
     const tools = (k.tools_summary || []).map(t => `<div class="ns-step"><span><strong>${this.escape(t.name)}:</strong> ${this.escape(t.use)}</span></div>`).join("");
     const faqs = (k.faqs || []).map(f => `<div class="ns-step"><span><strong>Q: ${this.escape(f.q)}</strong><br>A: ${this.escape(f.a)}</span></div>`).join("");
+    const bullets = (k.bullets || []).map(b => `<div class="ns-step"><span>• ${this.escape(b)}</span></div>`).join("");
     const summary = k.what_it_does || k.overview || "";
     const nav = k.nav ? `<button class="ns-nav-btn" onclick="window.location.href='${k.nav}'">Open feature</button>` : "";
     let blocks = "";
     if (steps) blocks += `<div class="ns-steps-block">${steps}</div>`;
     if (tools) blocks += `<div class="ns-steps-block">${tools}</div>`;
     if (faqs) blocks += `<div class="ns-steps-block">${faqs}</div>`;
+    if (bullets) blocks += `<div class="ns-steps-block">${bullets}</div>`;
     this.addMessage("bot", `<strong>${this.escape(k.title)}</strong><br><span class="ns-muted-text">${this.escape(summary)}</span>${blocks}${nav}`, { chips: k.chips || [] });
   },
   renderLegalAnswer(data) {
