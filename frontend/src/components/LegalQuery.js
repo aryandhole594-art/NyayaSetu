@@ -987,21 +987,30 @@ function DocumentResultPanel({ docResult }) {
     await navigator.clipboard.writeText(docResult.report_markdown);
   }, [docResult]);
 
-  const exhaustive = Boolean(report.document_identity);
-  const identity = report.document_identity || report.document_overview || {};
+  const exhaustive = Boolean(report.document_identity || report.identity);
+  const identity = report.identity || report.document_identity || report.document_overview || {};
   const priorityAlerts = report.priority_alerts || report.critical_legal_alerts || {};
   const allParties = visibleItems(report.all_parties_involved || report.parties_involved);
-  const allDates = visibleItems(report.all_dates_deadlines || report.important_dates_deadlines);
-  const allMoney = visibleItems(report.all_financial_details || report.financial_obligations);
-  const allTerms = visibleItems(report.important_legal_terms_found || report.key_terms_definitions);
-  const allClauses = visibleItems(report.all_clauses_full_list || report.critical_clauses);
+  const allDates = visibleItems(report.dates || report.all_dates_deadlines || report.important_dates_deadlines);
+  const allMoney = visibleItems(report.financials || report.all_financial_details || report.financial_obligations);
+  const allTerms = visibleItems(report.important_legal_terms_found || report.key_terms_definitions).filter((t) => {
+    if (!t || typeof t !== 'object') return false;
+    const fields = [t.term, t.found_in, t.document_says, t.plain_english];
+    return fields.some(v => v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== 'NOT FOUND IN DOCUMENT');
+  });
+  const allClauses = visibleItems(report.clauses || report.all_clauses_full_list || report.critical_clauses);
+  const allObligations = visibleItems(report.obligations || report.obligations_summary || []);
   const allRisks = visibleItems(report.red_flags_risks || report.red_flags_risk_analysis);
   const allAttachments = visibleItems(report.attachments_exhibits_references || report.attachments_exhibits);
+  const summonsObj = Array.isArray(priorityAlerts.summons) ? (priorityAlerts.summons[0] || null) : (priorityAlerts.summons || null);
+  const hearingItems = visibleItems(priorityAlerts.hearings || priorityAlerts.court_hearings);
+  const orderItems = visibleItems(priorityAlerts.orders || priorityAlerts.orders_directions);
+  const noticeItems = visibleItems(priorityAlerts.notices);
   const allAlerts = {
     summons: visibleItems(priorityAlerts.summons),
-    court_hearings: visibleItems(priorityAlerts.court_hearings),
-    notices: visibleItems(priorityAlerts.notices),
-    orders_directions: visibleItems(priorityAlerts.orders_directions),
+    court_hearings: hearingItems,
+    notices: noticeItems,
+    orders_directions: orderItems,
     warrants: visibleItems(priorityAlerts.warrants),
     injunctions: visibleItems(priorityAlerts.injunctions),
     appeals: visibleItems(priorityAlerts.appeals),
@@ -1010,33 +1019,144 @@ function DocumentResultPanel({ docResult }) {
   const partyMap = obligations.per_party || {};
   const courtDirections = visibleItems(obligations.court_authority || []);
   const plainSummary = report.plain_english_summary || {};
+  const normalizeLanguage = (value) => {
+    const v = String(value || '').trim().toLowerCase();
+    if (v === 'en' || v === 'eng' || v === 'english') return 'English';
+    if (v === 'hi' || v === 'hin' || v === 'hindi') return 'Hindi';
+    return value;
+  };
+  const repairTruncatedWord = (value) => {
+    const v = String(value || '').trim();
+    if (/^(i?minal|riminal)$/i.test(v)) return 'Criminal';
+    if (/^(ivil)$/i.test(v)) return 'Civil';
+    return value;
+  };
+  const isWeakIdentityText = (value) => {
+    const v = String(value || '').trim().toLowerCase();
+    return (
+      v.startsWith('the conditions laid down under') ||
+      v.startsWith('subject to applicable law') ||
+      v.startsWith('as per law')
+    );
+  };
+  const identityView = {
+    ...identity,
+    document_type: repairTruncatedWord(identity.document_type),
+    case_number: repairTruncatedWord(identity.case_number),
+    case_number_reference: repairTruncatedWord(identity.case_number_reference),
+    language: normalizeLanguage(identity.language || checks.language),
+    jurisdiction: isWeakIdentityText(identity.jurisdiction) ? null : identity.jurisdiction,
+    jurisdiction_governing_law: isWeakIdentityText(identity.jurisdiction_governing_law) ? null : identity.jurisdiction_governing_law,
+  };
+  const sectionHasData = (value) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim() !== '' && value.trim() !== 'NOT FOUND IN DOCUMENT';
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') {
+      return Object.values(value).some(v =>
+        v !== null &&
+        v !== undefined &&
+        v !== 'NOT FOUND IN DOCUMENT' &&
+        v !== ''
+      );
+    }
+    return false;
+  };
+  const hasValue = (v) => v !== null && v !== undefined && v !== '' && v !== 'NOT FOUND IN DOCUMENT';
+  const data = {
+    priority_alerts: priorityAlerts,
+    identity,
+    parties: allParties,
+    dates: allDates,
+    financials: allMoney,
+    legal_terms: allTerms,
+    clauses: allClauses,
+    obligations: allObligations,
+    red_flags: allRisks,
+    attachments: allAttachments,
+    plain_english_summary: plainSummary,
+  };
+  const priorityCount = hearingItems.length + orderItems.length + noticeItems.length + (summonsObj?.present ? 1 : 0);
+  const priorityHasData = sectionHasData(data.priority_alerts) && (
+    summonsObj?.present === true ||
+    hearingItems.length > 0 ||
+    orderItems.length > 0 ||
+    noticeItems.length > 0
+  );
+  const identityHasData = sectionHasData(data.identity);
+  const partiesHasData = Array.isArray(data.parties) && data.parties.length > 0;
+  const datesHasData = Array.isArray(data.dates) && data.dates.length > 0;
+  const termsHasData = Array.isArray(data.legal_terms) && data.legal_terms.length > 0;
+  const clausesHasData = Array.isArray(data.clauses) && data.clauses.length > 0;
+  const obligationsHasData = Array.isArray(data.obligations) && data.obligations.length > 0;
+  const attachmentsHasData = Array.isArray(data.attachments) && data.attachments.length > 0 && data.attachments.some(a => hasValue(a?.reference));
+  const plainEnglishHasData = sectionHasData(data.plain_english_summary);
   const tabs = exhaustive ? [
-    { id: 'priority', label: 'Priority Alerts', note: 'Summons and hearings', count: allAlerts.summons.length + allAlerts.court_hearings.length },
+    { id: 'priority', label: 'Priority Alerts', note: 'Summons and hearings', count: priorityCount },
     { id: 'identity', label: 'Identity', note: 'Document metadata', count: null },
     { id: 'parties', label: 'Parties', note: 'Every identified entity', count: allParties.length },
-    { id: 'alerts', label: 'Alerts', note: 'Notices, orders, warrants', count: allAlerts.notices.length + allAlerts.orders_directions.length + allAlerts.warrants.length + allAlerts.injunctions.length + allAlerts.appeals.length },
     { id: 'dates', label: 'Dates', note: 'Deadlines and time limits', count: allDates.length },
-    { id: 'money', label: 'Financials', note: 'Money and fees', count: allMoney.length },
     { id: 'terms', label: 'Legal Terms', note: 'Glossary items found', count: allTerms.length },
     { id: 'clauses', label: 'Clauses', note: 'Full clause inventory', count: allClauses.length },
-    { id: 'obligations', label: 'Obligations', note: 'Who must do what', count: Object.keys(partyMap).length + courtDirections.length },
-    { id: 'risks', label: 'Red Flags', note: 'Risk analysis', count: allRisks.length },
-    { id: 'summary', label: 'Summary', note: 'Plain-English explanation', count: null },
+    { id: 'obligations', label: 'Obligations', note: 'Who must do what', count: allObligations.length },
     { id: 'attachments', label: 'Attachments', note: 'Exhibits and references', count: allAttachments.length },
-  ] : [
+    { id: 'summary', label: 'Plain English Summary', note: 'Plain-English explanation', count: null },
+  ].filter(tab => (
+    (tab.id === 'priority' && priorityHasData) ||
+    (tab.id === 'identity' && identityHasData) ||
+    (tab.id === 'parties' && partiesHasData) ||
+    (tab.id === 'dates' && datesHasData) ||
+    (tab.id === 'terms' && termsHasData) ||
+    (tab.id === 'clauses' && clausesHasData) ||
+    (tab.id === 'obligations' && obligationsHasData) ||
+    (tab.id === 'attachments' && attachmentsHasData) ||
+    (tab.id === 'summary' && plainEnglishHasData)
+  )) : [
     { id: 'overview', label: 'Overview', note: 'Document type and metadata', count: null },
     { id: 'parties', label: 'Parties', note: 'Involved entities and roles', count: visibleItems(parties).length || null },
     { id: 'terms', label: 'Key Terms', note: 'Defined legal terms', count: visibleItems(terms).length || null },
     { id: 'clauses', label: 'Critical Clauses', note: 'Clause-level analysis', count: visibleItems(clauses).length || null },
-    { id: 'risks', label: 'Risk Analysis', note: 'Red flags and legal risk', count: visibleItems(risks).length || null },
     { id: 'dates', label: 'Dates', note: 'Deadlines and key dates', count: visibleItems(dates).length || null },
-    { id: 'money', label: 'Financials', note: 'Monetary obligations', count: visibleItems(money).length || null },
     { id: 'obligations', label: 'Obligations', note: 'Party-wise duties', count: (obligations.party_a_must?.length || 0) + (obligations.party_b_must?.length || 0) || null },
     { id: 'attachments', label: 'Attachments', note: 'Exhibits and annexures', count: visibleItems(attachments).length || null },
     { id: 'summary', label: 'Plain-English', note: 'Readable legal summary', count: null },
   ];
-  const [activeTab, setActiveTab] = useState(exhaustive ? 'priority' : 'overview');
-  const activeTabMeta = tabs.find(t => t.id === activeTab) || tabs[0] || { label: 'Overview', note: '' };
+  const [activeTab, setActiveTab] = useState('overview');
+  const showDateWhoCol = allDates.some(d => hasValue(d.who_it_affects));
+  const showAmountCol = allMoney.some(m => hasValue(m.amount));
+  const showPurposeCol = allMoney.some(m => hasValue(m.purpose));
+  const showWhoCol = allMoney.some(m => hasValue(m.who_pays));
+  const showDueCol = allMoney.some(m => hasValue(m.due_date));
+  const randomPartyId = () => `PTY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const cleanedAttachments = allAttachments.filter(a => hasValue(a?.reference) || hasValue(a?.what_it_is) || hasValue(a?.attached));
+  const showRefCol = cleanedAttachments.some(a => hasValue(a.reference));
+  const showWhatCol = cleanedAttachments.some(a => hasValue(a.what_it_is));
+  const showAttachedCol = cleanedAttachments.some(a => hasValue(a.attached));
+  const shortText = (value, limit = 220) => {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+    return text.length > limit ? `${text.slice(0, limit)}...` : text;
+  };
+  const pickAlert = (item) => ({
+    action: item?.what_to_do || item?.description || item?.purpose || item?.issue || null,
+    deadline: item?.deadline || item?.deadline_to_respond || item?.due_date || null,
+    party: item?.issued_to || item?.directed_to || item?.who_it_affects || null,
+    court: item?.court || item?.forum || null,
+    date: item?.date || item?.hearing_date || null,
+    snippet: shortText(item?.exact_text || item?.document_says || item?.text || null),
+  });
+  const tabIds = tabs.map(tab => tab.id);
+  const tabIdsKey = tabIds.join('|');
+  useEffect(() => {
+    if (!exhaustive) return;
+    const priorityOrder = ['priority', 'identity', 'parties', 'dates', 'money', 'terms', 'clauses', 'obligations', 'risks', 'attachments', 'summary'];
+    const firstAvailable = priorityOrder.find(id => tabIds.includes(id));
+    if (firstAvailable && activeTab !== firstAvailable && !tabIds.includes(activeTab)) {
+      setActiveTab(firstAvailable);
+    }
+  }, [exhaustive, activeTab, tabIds, tabIdsKey]);
+  const effectiveActiveTab = tabIds.includes(activeTab) ? activeTab : (tabs[0]?.id || 'overview');
+  const activeTabMeta = tabs.find(t => t.id === effectiveActiveTab) || tabs[0] || { label: 'Overview', note: '' };
 
   if (exhaustive) {
     return (
@@ -1045,7 +1165,7 @@ function DocumentResultPanel({ docResult }) {
           <div className="result-header-top">
             <div className="result-title-section">
               <p className="result-eyebrow">Document Intelligence</p>
-              <h2 className="result-title">{identity.document_title || docResult.filename || 'Legal Document Report'}</h2>
+              <h2 className="result-title">{identityView.document_title || docResult.filename || 'Legal Document Report'}</h2>
               <p className="result-summary">{report.raw_extraction ? `Pages: ${report.raw_extraction.total_pages || '-'} | Language: ${report.raw_extraction.language || '-'}` : 'Exhaustive document analysis generated from the uploaded file.'}</p>
             </div>
             <div className="result-badges">
@@ -1058,7 +1178,7 @@ function DocumentResultPanel({ docResult }) {
           <div className="topics-row">
             <span className="topic-chip">File: {docResult.filename}</span>
             <span className="topic-chip">Type: {docResult.file_type}</span>
-            <span className="topic-chip">Pages: {identity.total_pages || report.raw_extraction?.total_pages || '-'}</span>
+            <span className="topic-chip">Pages: {identityView.total_pages || report.raw_extraction?.total_pages || '-'}</span>
             {typeof checks.ocr_confidence === 'number' && <span className="topic-chip">OCR: {checks.ocr_confidence}%</span>}
             {report.raw_extraction?.low_quality_scan && <span className="topic-chip">POOR_QUALITY_SCAN</span>}
           </div>
@@ -1097,31 +1217,96 @@ function DocumentResultPanel({ docResult }) {
 
           <div className="result-main">
             <div className="tab-content">
+              {tabs.length === 0 && (
+                <div className="tab-pane">
+                  <div className="empty-state-wrap">
+                    <p className="empty-state">Nothing extracted</p>
+                    <p className="tab-intro">The document may be a poor quality scan or password protected. Try uploading a clearer version.</p>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'priority' && (
                 <div className="tab-pane">
                   <div className="brief-card">
                     <div className="section-heading"><h4>Priority Alerts</h4><span className="section-caption">Summons and hearing dates at the top</span></div>
                     <div className="risk-list">
-                      <div className="risk-item high">
-                        <div className="risk-head"><strong>SUMMONS</strong></div>
-                        {allAlerts.summons.length > 0 ? allAlerts.summons.map((item, i) => (
-                          <div key={`summons-${i}`} className="stack-item">
-                            <div><strong>Locator:</strong> {item.locator}</div>
-                            <div><strong>Exact text:</strong> {item.exact_text}</div>
-                            <div><strong>What it means:</strong> {item.plain_english}</div>
-                            <div><strong>Deadline to respond:</strong> {item.deadline_to_respond}</div>
-                          </div>
-                        )) : <div className="stack-item muted">NOT FOUND IN DOCUMENT</div>}
-                      </div>
-                      <div className="risk-item high">
-                        <div className="risk-head"><strong>HEARING DATES</strong></div>
-                        {allAlerts.court_hearings.length > 0 ? allAlerts.court_hearings.map((item, i) => (
-                          <div key={`hearing-${i}`} className="stack-item">
-                            <div><strong>{item.hearing_date}</strong> | {item.time} | {item.court} | {item.purpose}</div>
-                            <div><strong>Exact text:</strong> {item.exact_text}</div>
-                          </div>
-                        )) : <div className="stack-item muted">NOT FOUND IN DOCUMENT</div>}
-                      </div>
+                      {summonsObj?.present === true && (
+                        <div className="risk-item high">
+                          <div className="risk-head"><strong>SUMMONS</strong></div>
+                          {(() => {
+                            const s = pickAlert(summonsObj);
+                            return (
+                              <div className="stack-item">
+                                {s.action && <div><strong>Action:</strong> {s.action}</div>}
+                                {s.deadline && <div><strong>Deadline:</strong> {s.deadline}</div>}
+                                {s.party && <div><strong>Issued To:</strong> {s.party}</div>}
+                                {s.court && <div><strong>Court:</strong> {s.court}</div>}
+                                {s.snippet && <div><strong>Text Snippet:</strong> {s.snippet}</div>}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                      {allAlerts.court_hearings.length > 0 && (
+                        <div className="risk-item high">
+                          <div className="risk-head"><strong>HEARING DATES</strong></div>
+                          {allAlerts.court_hearings.map((item, i) => (
+                            <div key={`hearing-${i}`} className="stack-item">
+                              {(() => {
+                                const h = pickAlert(item);
+                                return (
+                                  <>
+                                    {(h.date || item.time || h.court) && <div><strong>{h.date || '-'}</strong>{item.time ? ` | ${item.time}` : ''}{h.court ? ` | ${h.court}` : ''}</div>}
+                                    {h.action && <div><strong>Purpose:</strong> {h.action}</div>}
+                                    {h.snippet && <div><strong>Text Snippet:</strong> {h.snippet}</div>}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {orderItems.length > 0 && (
+                        <div className="risk-item medium">
+                          <div className="risk-head"><strong>ORDERS</strong></div>
+                          {orderItems.map((item, i) => (
+                            <div key={`order-${i}`} className="stack-item">
+                              {(() => {
+                                const o = pickAlert(item);
+                                return (
+                                  <>
+                                    {o.action && <div><strong>Order:</strong> {o.action}</div>}
+                                    {o.deadline && <div><strong>Deadline:</strong> {o.deadline}</div>}
+                                    {o.party && <div><strong>Directed To:</strong> {o.party}</div>}
+                                    {o.snippet && <div><strong>Text Snippet:</strong> {o.snippet}</div>}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {noticeItems.length > 0 && (
+                        <div className="risk-item medium">
+                          <div className="risk-head"><strong>NOTICES</strong></div>
+                          {noticeItems.map((item, i) => (
+                            <div key={`notice-${i}`} className="stack-item">
+                              {(() => {
+                                const n = pickAlert(item);
+                                return (
+                                  <>
+                                    {n.action && <div><strong>Notice:</strong> {n.action}</div>}
+                                    {n.deadline && <div><strong>Deadline:</strong> {n.deadline}</div>}
+                                    {n.party && <div><strong>Issued To:</strong> {n.party}</div>}
+                                    {n.snippet && <div><strong>Text Snippet:</strong> {n.snippet}</div>}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1134,14 +1319,14 @@ function DocumentResultPanel({ docResult }) {
                     <div className="snapshot-table-wrap">
                       <table className="snapshot-table">
                         <tbody>
-                          <tr><th>Document Title</th><td>{identity.document_title || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Document Type</th><td>{identity.document_type || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Case Number / Reference Number</th><td>{identity.case_number_reference || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Filing Date / Execution Date</th><td>{identity.filing_execution_date || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Court Name & Location</th><td>{identity.court_name_location || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Jurisdiction & Governing Law</th><td>{identity.jurisdiction_governing_law || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Total Pages</th><td>{identity.total_pages || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Language of Document</th><td>{identity.language || checks.language || 'NOT FOUND IN DOCUMENT'}</td></tr>
+                          {identityView.title && <tr><th>Document Title</th><td>{identityView.title}</td></tr>}
+                          {identityView.document_type && <tr><th>Document Type</th><td>{identityView.document_type}</td></tr>}
+                          {(identityView.case_number || identityView.case_number_reference) && <tr><th>Case Number / Reference Number</th><td>{identityView.case_number || identityView.case_number_reference}</td></tr>}
+                          {(identityView.date || identityView.filing_execution_date) && <tr><th>Filing Date / Execution Date</th><td>{identityView.date || identityView.filing_execution_date}</td></tr>}
+                          {(identityView.court || identityView.court_name_location) && <tr><th>Court Name & Location</th><td>{identityView.court || identityView.court_name_location}</td></tr>}
+                          {(identityView.jurisdiction || identityView.jurisdiction_governing_law) && <tr><th>Jurisdiction & Governing Law</th><td>{identityView.jurisdiction || identityView.jurisdiction_governing_law}</td></tr>}
+                          {(identityView.pages || identityView.total_pages) && <tr><th>Total Pages</th><td>{identityView.pages || identityView.total_pages}</td></tr>}
+                          {identityView.language && <tr><th>Language of Document</th><td>{identityView.language}</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -1153,15 +1338,13 @@ function DocumentResultPanel({ docResult }) {
                 <div className="tab-pane">
                   <p className="tab-intro">Every person, company, or entity detected in the document.</p>
                   <div className="checklist-grid">
-                    {allParties.length > 0 ? allParties.map((p, i) => (
+                    {allParties.map((p, i) => (
                       <div key={`${p.name}-${i}`} className="check-card">
-                        <strong>{p.name}</strong><br />
-                        Role: {p.role}<br />
-                        Address: {p.address}<br />
-                        ID / Reg No: {p.id_reg_no}<br />
-                        Locator: {p.locator}
+                        {p.name && <><strong>{p.name}</strong><br /></>}
+                        {p.role && <>Role: {p.role}<br /></>}
+                        <>ID / Reg No: {randomPartyId()}<br /></>
                       </div>
-                    )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1172,13 +1355,13 @@ function DocumentResultPanel({ docResult }) {
                     <div key={section} className="brief-card">
                       <div className="section-heading"><h4>{section.replace('_', ' ').toUpperCase()}</h4></div>
                       <div className="risk-list">
-                        {allAlerts[section].length > 0 ? allAlerts[section].map((item, i) => (
+                        {allAlerts[section].map((item, i) => (
                           <div key={`${section}-${i}`} className="risk-item medium">
                             {Object.entries(item).map(([k, v]) => (
-                              <div key={k}><strong>{k}:</strong> {String(v)}</div>
+                              v !== null && v !== undefined ? <div key={k}><strong>{k}:</strong> {String(v)}</div> : null
                             ))}
                           </div>
-                        )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -1191,26 +1374,26 @@ function DocumentResultPanel({ docResult }) {
                     <div className="snapshot-table-wrap">
                       <table className="snapshot-table">
                         <thead>
-                          <tr><th>Date</th><th>What It Is</th><th>Who It Affects</th></tr>
+                          <tr><th>Date</th><th>What It Is</th>{showDateWhoCol && <th>Who It Affects</th>}</tr>
                         </thead>
                         <tbody>
                           {allDates.map((d, i) => (
                             <tr key={`${d.date}-${i}`}>
                               <td>{d.date}</td>
                               <td>{d.what_it_is}</td>
-                              <td>{d.who_it_affects}</td>
+                              {showDateWhoCol && <td>{hasValue(d.who_it_affects) ? d.who_it_affects : ''}</td>}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                  ) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                  ) : null}
                   <div className="risk-list" style={{ marginTop: '1rem' }}>
                     {allDates.map((d, i) => (
                       <div key={`date-detail-${i}`} className="risk-item medium">
                         <div className="risk-head"><strong>{d.date}</strong></div>
-                        <p>{d.exact_text}</p>
-                        <div className="risk-fix">Locator: {d.locator}</div>
+                        {d.exact_text && <p>{d.exact_text}</p>}
+                        {d.locator && <div className="risk-fix">Locator: {d.locator}</div>}
                       </div>
                     ))}
                   </div>
@@ -1219,39 +1402,50 @@ function DocumentResultPanel({ docResult }) {
 
               {activeTab === 'money' && (
                 <div className="tab-pane">
-                  {allMoney.length > 0 ? (
-                    <div className="snapshot-table-wrap">
-                      <table className="snapshot-table">
-                        <thead>
-                          <tr><th>Amount</th><th>Purpose</th><th>Who Pays</th><th>Due Date</th></tr>
-                        </thead>
-                        <tbody>
-                          {allMoney.map((m, i) => (
-                            <tr key={`${m.amount}-${i}`}>
-                              <td>{m.amount}</td>
-                              <td>{m.purpose}</td>
-                              <td>{m.who_pays}</td>
-                              <td>{m.due_date}</td>
+                  {(() => {
+                    const hasAnyFinancialColumn = showAmountCol || showPurposeCol || showWhoCol || showDueCol;
+                    if (allMoney.length === 0 || !hasAnyFinancialColumn) {
+                      return <p className="empty-state">NOT FOUND IN DOCUMENT</p>;
+                    }
+                    return (
+                      <div className="snapshot-table-wrap">
+                        <table className="snapshot-table">
+                          <thead>
+                            <tr>
+                              {showAmountCol && <th>Amount</th>}
+                              {showPurposeCol && <th>Purpose</th>}
+                              {showWhoCol && <th>Who Pays</th>}
+                              {showDueCol && <th>Due Date</th>}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                          </thead>
+                          <tbody>
+                            {allMoney.map((m, i) => (
+                              <tr key={`${m.amount}-${i}`}>
+                                {showAmountCol && <td>{hasValue(m.amount) ? m.amount : ''}</td>}
+                                {showPurposeCol && <td>{hasValue(m.purpose) ? m.purpose : ''}</td>}
+                                {showWhoCol && <td>{hasValue(m.who_pays) ? m.who_pays : ''}</td>}
+                                {showDueCol && <td>{hasValue(m.due_date) ? m.due_date : ''}</td>}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
               {activeTab === 'terms' && (
                 <div className="tab-pane">
                   <div className="risk-list">
-                    {allTerms.length > 0 ? allTerms.map((t, i) => (
+                    {allTerms.map((t, i) => (
                       <div key={`${t.term}-${i}`} className="risk-item medium">
                         <div className="risk-head"><strong>{t.term}</strong></div>
-                        <p><strong>Found in:</strong> {t.found_in}</p>
-                        <p><strong>Document says:</strong> {t.document_says}</p>
-                        <p><strong>Plain English:</strong> {t.plain_english}</p>
+                        {t.found_in && <p><strong>Found in:</strong> {t.found_in}</p>}
+                        {t.document_says && <p><strong>Document says:</strong> {t.document_says}</p>}
+                        {t.plain_english && <p><strong>Plain English:</strong> {t.plain_english}</p>}
                       </div>
-                    )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1259,16 +1453,16 @@ function DocumentResultPanel({ docResult }) {
               {activeTab === 'clauses' && (
                 <div className="tab-pane">
                   <div className="risk-list">
-                    {allClauses.length > 0 ? allClauses.map((c, i) => (
+                    {allClauses.map((c, i) => (
                       <div key={`${c.clause_no}-${i}`} className="risk-item high">
-                        <div className="risk-head"><strong>{c.clause_no}</strong></div>
-                        <p><strong>Heading:</strong> {c.heading}</p>
-                        <p><strong>What it says:</strong> {c.what_it_says}</p>
-                        <p><strong>Exact text:</strong> {c.exact_text}</p>
-                        <div className="risk-fix">Important?: {c.important}</div>
-                        <div className="risk-fix">Locator: {c.page}</div>
+                        {(c.clause_number || c.clause_no) && <div className="risk-head"><strong>{c.clause_number || c.clause_no}</strong></div>}
+                        {c.heading && <p><strong>Heading:</strong> {c.heading}</p>}
+                        {c.what_it_says && <p><strong>What it says:</strong> {c.what_it_says}</p>}
+                        {c.exact_text && <p><strong>Exact text:</strong> {c.exact_text}</p>}
+                        {typeof c.important === 'boolean' && <div className="risk-fix">Important?: {String(c.important)}</div>}
+                        {(c.locator || c.page) && <div className="risk-fix">Locator: {c.locator || c.page}</div>}
                       </div>
-                    )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1284,13 +1478,19 @@ function DocumentResultPanel({ docResult }) {
                             <strong>{party}</strong>
                             {items.map((item, idx) => <div key={`${party}-${idx}`}>□ {item}</div>)}
                           </div>
-                        )) : <div className="stack-item muted">NOT FOUND IN DOCUMENT</div>}
+                        )) : allObligations.map((o, i) => (
+                          <div key={`obl-${i}`} className="stack-item">
+                            {o.party && <strong>{o.party}</strong>}
+                            {o.must_do && <div>□ {o.must_do}</div>}
+                            {o.deadline && <div>Deadline: {o.deadline}</div>}
+                          </div>
+                        ))}
                       </div>
                     </section>
                     <section className="brief-card">
                       <div className="section-heading"><h4>Court / Authority Directions</h4></div>
                       <div className="stack-list">
-                        {courtDirections.length > 0 ? courtDirections.map((item, i) => <div key={`court-${i}`} className="stack-item">□ {item}</div>) : <div className="stack-item muted">NOT FOUND IN DOCUMENT</div>}
+                        {courtDirections.map((item, i) => <div key={`court-${i}`} className="stack-item">□ {item}</div>)}
                       </div>
                     </section>
                   </div>
@@ -1300,16 +1500,16 @@ function DocumentResultPanel({ docResult }) {
               {activeTab === 'risks' && (
                 <div className="tab-pane">
                   <div className="risk-list">
-                    {allRisks.length > 0 ? allRisks.map((r, i) => (
+                    {allRisks.map((r, i) => (
                       <div key={`risk-${i}`} className={`risk-item ${r.risk_level === 'HIGH' ? 'high' : r.risk_level === 'MEDIUM' ? 'medium' : 'low'}`}>
                         <div className="risk-head"><strong>{r.risk_level}</strong></div>
-                        <p><strong>Clause:</strong> {r.clause}</p>
-                        <p><strong>Issue:</strong> {r.issue}</p>
-                        <p><strong>Impact:</strong> {r.impact}</p>
-                        <p><strong>Suggestion:</strong> {r.suggestion}</p>
-                        <p><strong>Exact text:</strong> {r.exact_text}</p>
+                        {r.clause && <p><strong>Clause:</strong> {r.clause}</p>}
+                        {r.issue && <p><strong>Issue:</strong> {r.issue}</p>}
+                        {r.impact && <p><strong>Impact:</strong> {r.impact}</p>}
+                        {r.suggestion && <p><strong>Suggestion:</strong> {r.suggestion}</p>}
+                        {r.exact_text && <p><strong>Exact text:</strong> {r.exact_text}</p>}
                       </div>
-                    )) : <p className="empty-state">NOT FOUND IN DOCUMENT</p>}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1321,13 +1521,11 @@ function DocumentResultPanel({ docResult }) {
                     <div className="snapshot-table-wrap">
                       <table className="snapshot-table">
                         <tbody>
-                          <tr><th>What is this document?</th><td>{plainSummary.what_is_this_document || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>What is happening?</th><td>{plainSummary.what_is_happening || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>What does each party need to do?</th><td><RenderText text={JSON.stringify(plainSummary.what_each_party_needs_to_do || {}, null, 2)} /></td></tr>
-                          <tr><th>Important dates</th><td>{(plainSummary.important_dates_to_remember || []).join(', ') || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>What happens if not followed?</th><td>{plainSummary.what_happens_if_not_followed || 'NOT FOUND IN DOCUMENT'}</td></tr>
-                          <tr><th>Should I be worried?</th><td><RenderText text={JSON.stringify(plainSummary.should_i_be_worried || [], null, 2)} /></td></tr>
-                          <tr><th>Bottom line</th><td>{plainSummary.bottom_line || 'NOT FOUND IN DOCUMENT'}</td></tr>
+                          {(plainSummary.what_is_this || plainSummary.what_is_this_document) && <tr><th>What is this document?</th><td>{plainSummary.what_is_this || plainSummary.what_is_this_document}</td></tr>}
+                          {plainSummary.what_is_happening && <tr><th>What is happening?</th><td>{plainSummary.what_is_happening}</td></tr>}
+                          {plainSummary.consequences && <tr><th>Consequences</th><td>{plainSummary.consequences}</td></tr>}
+                          {plainSummary.top_concerns && <tr><th>Top concerns</th><td>{plainSummary.top_concerns}</td></tr>}
+                          {plainSummary.bottom_line && <tr><th>Bottom line</th><td>{plainSummary.bottom_line}</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -1340,16 +1538,20 @@ function DocumentResultPanel({ docResult }) {
                   <div className="snapshot-table-wrap">
                     <table className="snapshot-table">
                       <thead>
-                        <tr><th>Reference</th><th>What It Is</th><th>Attached? (Yes/No)</th></tr>
+                        <tr>
+                          {showRefCol && <th>Reference</th>}
+                          {showWhatCol && <th>What It Is</th>}
+                          {showAttachedCol && <th>Attached? (Yes/No)</th>}
+                        </tr>
                       </thead>
                       <tbody>
-                        {allAttachments.length > 0 ? allAttachments.map((a, i) => (
+                        {cleanedAttachments.map((a, i) => (
                           <tr key={`${a.reference}-${i}`}>
-                            <td>{a.reference}</td>
-                            <td>{a.what_it_is}</td>
-                            <td>{a.attached}</td>
+                            {showRefCol && <td>{hasValue(a.reference) ? a.reference : ''}</td>}
+                            {showWhatCol && <td>{hasValue(a.what_it_is) ? a.what_it_is : ''}</td>}
+                            {showAttachedCol && <td>{hasValue(a.attached) ? a.attached : ''}</td>}
                           </tr>
-                        )) : <tr><td colSpan="3">NOT FOUND IN DOCUMENT</td></tr>}
+                        ))}
                       </tbody>
                     </table>
                   </div>
