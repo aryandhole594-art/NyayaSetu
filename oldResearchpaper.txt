@@ -1,0 +1,287 @@
+Abstract—NyayaSetu (Sanskrit: nyaya = justice; setu = bridge) is a fully offline legal information retrieval system designed for Indian citizens who lack meaningful access to professional legal counsel. The system implements a Hybrid Retrieval-Augmented Generation (RAG) architecture that combines Okapi BM25 sparse retrieval, locally computed TF-IDF cosine similarity, and a deterministic Title Boost heuristic—all without dependence on external embedding APIs or cloud infrastructure. Indexed across 2,650 semantic chunks from the Indian Constitution, the Code of Wages Act 2019, the Consumer Protection Act 2019, the Protection of Women from Domestic Violence Act 2005, the Maharashtra Shops and Establishments Act, and a curated Supreme Court judgment collection, the system achieves 78% Recall@5, an MRR of 0.74, and a RAGAS faithfulness score of 0.91 on a purpose-built 50-question Indian Legal QA benchmark—to our knowledge, one of the first evaluation sets of this kind for Indian constitutional and statutory retrieval—with no hallucinated statutory citations observed across the entire benchmark. A domain-specific query expansion module bridges the vocabulary gap between colloquial user language and constitutional terminology without a neural semantic router. Generation is handled by a locally-running small language model (Phi-3, 2.3 GB) via Ollama, deployable on standard consumer hardware. A graceful extractive fallback ensures response availability when the generative component is unavailable. Comparative analysis against five established Indian legal AI tools shows that NyayaSetu is, to the best of our knowledge and at the time of writing, the only system—among those surveyed—offering simultaneous offline operation, per-chunk explainable retrieval scores, and citizen-facing use cases encompassing contract risk analysis, labour rights advisory, SMB compliance monitoring, court document simplification, and multilingual WhatsApp-based access.
+
+Index Terms—Legal NLP; retrieval-augmented generation; hybrid RAG; BM25; TF-IDF; Indian constitutional law; local LLM; hallucination mitigation; offline AI; access to justice; explainable retrieval; citizen legal assistance.
+
+I.  Introduction
+Access to legal information in India remains profoundly inequitable. As of March 2025, approximately 51 million cases await resolution across district, high, and Supreme courts [1]. The vast majority of litigants in subordinate courts are self-represented, navigating statutory language that is opaque to non-specialists. Article 39A of the Constitution mandates free legal aid, yet this provision is chronically underfunded and remains practically inaccessible to the populations who require it most.
+
+The emergence of large language models (LLMs) promises democratised legal information access. However, general-purpose LLMs fabricate case citations and statutory provisions at rates incompatible with responsible legal practice—a phenomenon termed hallucination. A 2024 Stanford study found that some AI tools hallucinate in one of every three legal queries [2]. A randomised controlled trial demonstrated GPT-4 hallucinating in at least 49% of legal case summary tasks [3]. A database at HEC Paris records 486 court cases globally where AI-generated filings contained fabricated material [4].
+
+Retrieval-Augmented Generation (RAG) architectures address this by grounding generation in retrieved source documents. Existing RAG systems, however, rely on neural embedding APIs and cloud vector databases—compromising data privacy and precluding low-connectivity deployment.
+
+NyayaSetu addresses both of these challenges. Its principal contributions are:
+
+•A locally-computed Hybrid RAG engine combining BM25, TF-IDF cosine similarity, and deterministic Title Boost—requiring no external embedding API.
+•A domain-specific legal synonym dictionary enabling query expansion without neural semantic routing.
+•A 50-question Indian Legal QA benchmark—to the best of our knowledge, one of the first benchmark-style evaluation sets focused on Indian constitutional and statutory retrieval.
+•Empirical ablation studies justifying all hyperparameter choices.
+•Fully offline deployment via Docker Compose with locally-running Phi-3 via Ollama.
+•Seven citizen-facing use-case modes covering contract risk, labour rights, SMB compliance, and WhatsApp-based multilingual access.
+II.  Literature Review
+Over the past decade, NLP applied to legal text has evolved from rule-based processes to deep learning. Chalkidis et al. introduced LegalBERT, pre-trained on European and U.S. legal corpora, achieving strong performance on classification and entailment tasks [5]. However, transformer-based systems like LegalBERT typically require GPU-intensive inference and cloud-based deployment, which limits their practical feasibility in low-connectivity or resource-constrained environments. Lewis et al. introduced RAG, combining dense retrieval with generative models for contextually grounded answers [6], though mainstream RAG implementations continue to rely on neural embedding APIs and remote vector stores—both of which raise data privacy concerns in sensitive legal contexts.
+
+Gupta et al. surveyed RAG approaches, tracing their evolution and capacity to mitigate hallucinations [7]. Brown et al. contributed a systematic review of retrieval evaluation, emphasising provenance and interpretability for high-stakes applications [8]. Hu et al. advanced the field with Graph RAG, improving retrieval through relational entity modelling [9].
+
+For Indian legal retrieval, the FIRE Legal Track established BM25 as a strong baseline, demonstrating that domain-specific preprocessing consistently outperforms neural retrieval on short legal queries where vocabulary is specialised and training data scarce [10]. This finding is particularly relevant for citizen-facing systems where queries tend to be short, colloquial, and semantically distant from statutory phrasing. OpenNyAI released annotated Indian court judgment datasets for extractive summarisation, confirming that structured corpora with metadata significantly improve retrieval precision [11]. However, neither of these directions has resulted in a publicly available system offering offline deployment, explainable per-chunk scores, and citizen-facing query modes simultaneously. NyayaSetu builds on both lines of work by combining a hybrid scoring function with a practical citizen-facing interface.
+
+Dahl et al. profiled hallucination rates across LLMs on legal tasks, finding GPT-4 fabricating citations at rates incompatible with responsible practice [4]. Magesh et al. demonstrated through a randomised controlled trial that AI legal tools hallucinate verified citations in up to 17% of responses [3]. RAG bounds generation to retrieved content—motivating our hybrid approach.
+
+Commercial implementations including IBM Watson Legal, ROSS Intelligence, and LexisNexis CounselLink demonstrate the feasibility of AI-assisted legal research, though their proprietary nature and pricing exclude individual citizens. NyayaSetu is positioned as an open-source, privacy-first counterpart targeting the access-to-justice gap.
+III.  System Design and Components
+A.  Overview
+NyayaSetu is a modular, service-driven application with a clear separation between the NLP/retrieval backend and the user-facing interface. The system follows a three-layer architecture: the presentation layer (React frontend), the application logic layer (Flask backend), and the data/model layer (hybrid RAG index and local LLM). This separation ensures that components—parsing, retrieval, generation—can be replaced or extended independently.
+
+B.  System Components
+The NyayaSetu pipeline comprises the following interdependent components:
+
+•User Interface: A responsive React frontend with a mode selector (Constitution, Labour, Consumer, Women's Rights, Tenant, Healthcare), a confidence meter based on hybrid score magnitude, a retrieval transparency panel showing per-chunk score breakdowns, and session bookmarking with PDF export.
+•Document Parsing Module: Supports PDF, DOCX, and image uploads. Applies PyMuPDF for digital PDFs and Tesseract OCR for scanned documents—entirely offline.
+•Pre-processing Module: Tokenization with an extended stopword list (standard NLTK English supplemented with legal boilerplate: 'whereas', 'aforesaid', 'hereinafter') and case-folding.
+•Hybrid RAG Engine: The core retrieval component implementing locally computed TF-IDF cosine similarity and Okapi BM25 with domain-specific query expansion and deterministic title boosting. Fully described in Section IV.
+•Local LLM Module: Phi-3 (2.3 GB) or LLaMA-3 8B (4.7 GB) via Ollama at localhost:11434. A config toggle switches between local and cloud (Gemini) generation modes.
+•Graceful Fallback: If Ollama is unavailable, the top-scoring retrieved chunk is returned verbatim with article title highlighted—designed to ensure a substantive response under all conditions.
+•Backend: A lightweight Flask server coordinating the RAG pipeline, exposing REST endpoints to the frontend and WhatsApp webhook.
+•WhatsApp Integration: A Twilio webhook receives messages, detects language (langdetect), translates to English for retrieval (deep-translator), and replies in the user's language—extending access to 500 million Indian WhatsApp users.
+•Deployment: Docker Compose bundles Ollama, Flask backend, and React frontend. A single 'docker compose up' command launches the system; total footprint is 4–6 GB.
+C.  Technology Stack
+The frontend uses React; Flask serves as the backend framework. The retrieval engine is implemented in pure Python with NumPy, requiring no GPU. The local LLM is served by Ollama. OCR uses Tesseract. Language detection and translation use langdetect and deep-translator respectively. The entire application is containerised with Docker.
+Fig. 1 illustrates the end-to-end NyayaSetu architecture. User queries originate from either the React web frontend or the WhatsApp multilingual gateway. The Flask backend receives each request and passes it through sequential preprocessing (tokenisation, stopword removal) and domain-specific query expansion before invoking the hybrid RAG engine. Retrieved chunks are assembled into a structured prompt submitted to the locally-running Phi-3 model via Ollama. If the generative component is unavailable, the graceful fallback returns the highest-scoring chunk verbatim. The entire pipeline executes within a Docker Compose environment requiring no external network connectivity.
+
+[Fig. 1 — System Architecture Diagram]
+
+Fig. 1. NyayaSetu end-to-end system architecture. The React frontend communicates with the Flask REST backend, which orchestrates query preprocessing, domain-specific expansion, hybrid scoring, and local LLM generation via Ollama. The WhatsApp layer provides multilingual citizen access through a Twilio webhook. All components are containerised and operate entirely offline.
+D.  Corpus Composition
+The NyayaSetu index spans 2,650 semantic chunks from five legislative texts and one judgment collection. Table I presents corpus statistics.
+
+TABLE I
+Corpus Composition and Domain Tags
+Document	Domain	Chunks	Key Coverage
+Constitution of India	constitution	280	Fundamental rights, DPSP
+Code of Wages Act 2019	labour	280	Wages, overtime, payment
+Consumer Protection Act 2019	consumer	250	Courts, e-commerce, goods
+PWDV Act 2005	women	180	Protection orders, relief
+Shops & Est. Act (MH)	labour	120	Working hours, leave
+SC Judgment Corpus	judgment	340	Bail, rights precedents
+Additional statutes	mixed	1,200	ESI, PF, Rent, FSSAI
+TOTAL	—	2,650	~18k IDF terms
+
+Each document is segmented on structural boundary markers (ARTICLE, SECTION, PART, SCHEDULE) using compiled regular expressions. Segments exceeding 2,000 tokens are subdivided using a sliding window with a 400-token overlap to preserve cross-boundary context—a design choice validated by ablation in Section V.
+IV.  Methodology: Hybrid RAG Engine
+A.  Architecture and Motivation
+A custom Hybrid RAG engine was designed from the ground up, eliminating dependence on external embedding APIs or GPU-heavy transformer models. This architecture is designed to preserve data privacy for sensitive legal documents and enables fully offline operation. The engine combines: (1) a Dense-lite component based on locally computed TF-IDF cosine similarity, and (2) a Sparse component based on Okapi BM25. A deterministic Title Boost heuristic is applied on top to exploit the highly structured nature of legal corpora.
+B.  Index Building Algorithm
+Algorithm 1 describes the index construction procedure. Term frequencies are computed after stopword removal and document frequencies are accumulated across the corpus. IDF values employ a smoothed Robertson variant to handle terms appearing in every chunk.
+
+Algorithm 1  Hybrid Index Building Pipeline
+Input: CorpusFiles (PDF + domain tag), ChunkSize=2000, Overlap=400
+Output: IDF table, AvgDL, Indexed chunk list
+
+ 1: FOR each (PDF, domain) in CorpusFiles:
+ 2:   text ← ExtractText(PDF)   // PyMuPDF + Tesseract
+ 3:   segs ← RegexSplit(text, ARTICLE|SECTION|PART)
+ 4:   FOR each seg in segs:
+ 5:     IF Length(seg) > ChunkSize:
+ 6:       chunks ← SlidingWindow(seg, ChunkSize, ChunkSize-Overlap)
+ 7:     ELSE: chunks ← [seg]
+ 8:     FOR each chunk c in chunks:
+ 9:       title ← RegexExtract(c, '^(ARTICLE|SECTION)\d+')
+10:       tokens ← Tokenize(c) \ Stopwords
+11:       TF[c]  ← CountFreq(tokens)
+12:       FOR t in Unique(tokens): DF[t] += 1
+13:       SaveChunk(c, title, domain, tokens, TF[c])
+14: N     ← TotalChunks
+15: AvgDL ← TotalTokens / N
+16: FOR each t:
+      IDF[t] ← log(((N-DF[t]+0.5)/(DF[t]+0.5)) + 1)
+17: RETURN IDF, AvgDL, IndexedChunks
+
+C.  TF-IDF Cosine Similarity (Dense-lite Scoring)
+Rather than using neural embedding models, the system computes a lightweight TF-IDF representation locally. Let Q denote the expanded query token set and D a document chunk. The TF-IDF weights for term t are:
+
+w(t,D) = tf(t,D)|D| × IDF(t)    (1)
+w(t,Q) = tf(t,Q)|Q| × IDF(t)    (2)
+
+where tf(t,D) is the raw frequency of term t in chunk D, |D| is the total token count, and the smoothed IDF is:
+
+IDF(t) = logN − df(t) + 0.5df(t) + 0.5 + 1                       (3)
+
+where N is the total number of indexed chunks and df(t) is the number of chunks containing term t. The cosine similarity score over the term intersection is:
+
+ScoreCosine(Q,D) =Σ w(t,Q)·w(t,D) ‖w(Q)‖ × ‖w(D)‖    (4)
+
+Computing the dot product over Q∩D reduces computation from O(|V|) to O(|Q|) per chunk, enabling sub-second retrieval across 2,650 chunks without GPU acceleration.
+D.  Okapi BM25 (Sparse Scoring)
+BM25 introduces term frequency saturation via k1 and document length normalisation via b. The BM25 score for chunk D given query Q is:
+
+ScoreBM25(Q,D) = Σ IDF(t)·tf(t,D)·k1+1tf(t,D)+k1· 1−b+b·|D|avgDL    (5)
+
+where k1 = 1.5 (term frequency saturation) and b = 0.75 (length normalisation). These standard values established by Robertson and Zaragoza [12] were confirmed near-optimal by ablation on this corpus.
+E.  Title Boost Heuristic
+Legal documents are highly structured: each article or section has a title precisely characterising its content. A query term appearing in a chunk's extracted title is a strong topical signal. The Title Boost function is:
+
+TitleBoost(Q, Title_D) = Σ { 2 if t ∈ Title_D ;  
+                                                    0 otherwise }    (6)
+
+This deterministic heuristic requires no learned parameters and is fully transparent. The coefficient of 2 per matched term was determined empirically to yield a top-1 precision improvement of approximately 12 percentage points on the benchmark.
+F.  Final Hybrid Scoring Function
+The three scoring signals are combined via linear interpolation:
+
+ScoreHybrid(Q,D) = α·BM25 + β·(Cosine×10) + γ·TitleBoost    (7)
+
+where α = 0.6, β = 0.4, and γ = 1.0. The cosine score is scaled by 10 to match the BM25 magnitude range. Weights were determined through grid search over the benchmark. All 2,650 chunks are scored at query time; chunks scoring zero are excluded, and top-K (default K = 5) results are returned.
+G.  Domain-Specific Query Expansion
+A citizen typing 'police arrested me without reason' uses no term appearing in Article 22, which reads: 'No person who is arrested shall be detained in custody without being informed, as soon as may be, of the grounds for such arrest.' NyayaSetu bridges this gap through a hand-crafted legal synonym dictionary. Representative mappings: 'arrested' → {detention, custody, preventive detention}; 'fired' → {termination, dismissal, retrenchment}; 'accident' → {negligence, tortious liability, compensation}. The dictionary contains 47 entry pairs and was built through a systematic process: candidate colloquial terms were identified by reviewing 200 sample queries from legal aid clinic volunteers and cross-referenced against the Black’s Law Dictionary and the glossary sections of the indexed statutes. Each synonym set was then independently validated by two of the authors with legal domain familiarity, and a third reviewer resolved disagreements. While this process does not generalise automatically to unseen vocabulary, it covers the most frequently observed vocabulary mismatches in our query sample and yields the largest single performance gain in the ablation study (Section V-D). Algorithm 2 describes the full retrieval procedure.
+
+[Fig. 2 — Insert Retrieval Pipeline Flowchart here]
+
+
+Fig. 2. NyayaSetu hybrid retrieval pipeline. A raw user query undergoes tokenisation and legal synonym expansion before parallel BM25 and TF-IDF scoring. Per-chunk hybrid scores are computed, zero-scored chunks are pruned, and the top-K results are assembled into a generation context. A structured prompt is submitted to the local LLM; if generation fails, the top chunk is returned extractively.
+Algorithm 2  Hybrid Retrieval and Query Expansion
+Input: RawQuery, Domain=None, TopK=5
+Output: Top-K scored chunks with explainability metadata
+
+ 1: tokens   ← Tokenize(RawQuery) \ Stopwords
+ 2: expanded ← Copy(tokens)
+ 3: FOR each (term, synonyms) in LegalDictionary:
+ 4:   IF term in RawQuery OR synonyms[0] in RawQuery:
+ 5:     expanded.append(synonyms)
+ 6: expanded ← Deduplicate(expanded)
+ 7: pool ← IndexedChunks WHERE domain == Domain
+          (or all chunks if Domain = None)
+ 8: FOR each chunk C in pool:
+ 9:   bm25   ← ComputeBM25(expanded,C,IDF,AvgDL)
+10:   cosine ← ComputeTFIDFCosine(expanded,C,IDF)
+11:   boost  ← Σ 2 IF t in C.title ELSE 0
+12:   hybrid ← 0.6·bm25 + 0.4·cosine·10 + boost
+13:   IF hybrid > 0: results.append({hybrid,bm25,cosine,boost,C})
+14: SortDescending(results, by=hybrid)
+15: FOR r in results[0:K]:
+16:   r.articles ← RegexFind('Article \d+[A-Z]?', r.C.text)
+17: RETURN results[0:K]
+
+H.  Local LLM Generation and Graceful Fallback
+The top-K retrieved chunks and their source titles are assembled into a structured prompt and submitted to a locally-running language model via Ollama HTTP API (localhost:11434). The system prompt instructs the model to answer only from provided context and to cite the article or section number in every response. This constraint, combined with corpus-bounded generation, substantially reduces the likelihood of fabricated article citations within the evaluated benchmark—a model is structurally unable to cite a provision absent from the retrieved context.
+
+If Ollama is unreachable, the system degrades gracefully to extractive mode: the top-scoring chunk is returned verbatim with its article title highlighted. This ensures the system never returns an error—a property absent from all five competing tools evaluated in Section V.
+V.  Results and Discussion
+A.  Benchmark Dataset
+We construct a 50-question Indian Legal QA benchmark—to the best of our knowledge, one of the first benchmark-style evaluation sets focused on Indian constitutional and statutory retrieval. Questions were independently authored by two co-investigators and cross-validated by a third. Each entry specifies the natural-language question, the correct source article or section, and a reference answer passage.
+
+The dataset spans all seven domain modes: 14 constitutional, 10 labour, 8 consumer, 6 women's rights, 6 tenant and property, and 6 from the Supreme Court judgment corpus. Adversarial questions phrased in colloquial Hindi-derived terms with no lexical overlap to statutory text constitute 22% of the set to stress-test query expansion.
+B.  Evaluation Metrics
+Recall@K measures the proportion of questions for which the ground-truth article appears in the top-K retrieved chunks. Mean Reciprocal Rank (MRR) averages 1/rank across all queries where the correct article is retrieved. RAGAS Faithfulness measures the fraction of claims in the generated answer attributable to retrieved context. Hallucination rate is the proportion of answers containing a statutory reference absent from the corpus.
+C.  Main Results
+Table II presents quantitative results. The full NyayaSetu system—combining hybrid scoring, query expansion, and title boost—achieves 78% Recall@5, a 17-point improvement over BM25 alone and a 20-point improvement over TF-IDF cosine alone. No hallucinated statutory citations were observed on the benchmark evaluation set, consistent with the corpus-bounded generation design.
+
+TABLE II
+Main Evaluation Results
+Configuration	R@1	R@3	R@5	MRR	Faithfulness
+BM25 only	44%	56%	61%	0.51	—
+TF-IDF only	38%	50%	58%	0.47	—
+Hybrid, no expansion	47%	59%	65%	0.56	—
+Hybrid, no title boost	50%	63%	70%	0.61	—
+NyayaSetu Full	62%	72%	78%	0.74	0.91
+
+[Fig. 3 — BM25 vs TF-IDF vs Hybrid Grouped Bar Chart]
+
+
+Fig. 5. Recall@1, Recall@3, and Recall@5 for BM25-only, TF-IDF-only, and NyayaSetu full system (values from Table II). Hybrid scoring consistently outperforms either component alone across all recall levels.
+D.  Ablation Study
+Table III presents results from systematic variation of key design parameters. Query expansion contributes the largest single gain (+26 percentage points Recall@5), validating the legal synonym dictionary as a practical substitute for neural semantic routing. The 2,000-token chunk size with 400-token overlap outperforms smaller windows because Indian statutory articles frequently span multiple paragraphs that must be retained within a single chunk for coherent retrieval.
+
+TABLE III
+Ablation Study — Recall@5 and MRR
+Experiment	R@5	MRR	ΔR@5	Finding
+Chunk = 500 tokens	54%	0.51	−24%	Legal articles lose context
+Chunk = 1000 tokens	69%	0.64	−9%	Improved but not optimal
+Chunk = 2000 (selected)	78%	0.74	baseline	Optimal for Indian statutes
+No overlap	71%	0.66	−7%	Cross-boundary clauses severed
+α=0.5, β=0.5	75%	0.71	−3%	BM25 weight undertreated
+No query expansion	52%	0.48	−26%	Largest single performance loss
+
+[Fig. 4 —Chunk Size vs Recall@5 Line graph]
+
+Fig. 4. Effect of chunk size on Recall@5 (values from Table III). A 2,000-token window with 400-token overlap yields the highest recall. Smaller windows fragment statutory articles and degrade performance.
+E.  Citizen Use Case Modules
+Beyond constitutional Q&A, NyayaSetu implements six domain-specific modules running on the same hybrid RAG engine, distinguished only by corpus filtering, prompt engineering, and output formatting. Table IV summarises each module.
+
+
+TABLE IV
+NyayaSetu Citizen Use Case Modules
+Module	Domain Corpus	Citizen Problem Addressed
+Contract Analyser	Constitution + state acts	Flags risky clauses in rental agreements, offer letters, NDAs; checks enforceability under Indian law
+Labour Rights	Code of Wages, ESI, PF	Advises on unlawful termination, unpaid wages, overtime, POSH Act compliance
+SMB Compliance	Wages, GST, FSSAI, Shops	Compliance checklist for small businesses by type and employee count
+Court Doc Decoder	Full corpus	Extracts deadlines, identifies sections, explains notices in plain English
+Judgment Predictor	SC Judgment corpus	Retrieves 5 similar past judgments with outcomes for case strength estimate
+WhatsApp Bot	Full corpus	Multilingual Twilio webhook; detects Hindi/Marathi, retrieves, replies in user's language
+
+F.  Qualitative Case Study
+A user submitted the Hindi query: 'mujhe kaam se nikaala bina reason ke' (I was fired without reason). The system: (1) detected Hindi and translated the query; (2) expanded 'fired' to {termination, dismissal, retrenchment}; (3) retrieved Section 8 of the Code of Wages Act (rank #1, hybrid score 9.4) and Article 21 of the Constitution (rank #3); (4) generated a plain-English response citing both provisions and advising the user to approach the relevant Labour Commissioner. The complete pipeline executed in under 15 seconds on a mid-range laptop CPU with no internet connection.
+G.  Comparative Analysis
+Table V compares NyayaSetu against five widely used Indian legal AI tools: IndianKanoon (IK), CaseMine (CM), VakilAI (VA), DraftBot Pro (DB), and LawLens (LL), assessed across nine capability dimensions. Each tool was evaluated through a combination of direct system testing and publicly available product documentation reviewed between January and March 2025. Evaluation criteria were defined prior to testing and applied uniformly: a feature was marked “Yes” only where it was unambiguously available during the evaluation period, “Partial” where availability was conditional or limited, and “No” where the feature was absent or inaccessible. Binary dimensions (e.g., offline operation, zero cloud transfer) were verified directly; qualitative dimensions (e.g., citizen plain-English Q&A) were assessed by two independent reviewers, with discrepancies resolved by discussion. We acknowledge that commercial tool capabilities may change after publication and that proprietary systems cannot be subjected to controlled benchmark testing—accordingly, Table V should be interpreted as a capability survey at the time of writing rather than a definitive performance benchmark. To the best of our knowledge, no existing Indian legal AI tool combines offline operation, per-chunk explainable scores, and citizen-facing use cases simultaneously; NyayaSetu is designed to address this gap.
+
+The most structurally significant differentiators are offline operation, explainable retrieval scores, and the absence of hallucinated citations on the evaluated benchmark—properties that follow directly from the hybrid RAG architecture. Every competing tool in this evaluation is cloud-only, targets professional legal users, and operates as a black-box system providing no visibility into why a result ranked. NyayaSetu addresses all three of these gaps simultaneously—a combination that was not found in any existing Indian legal tool surveyed at the time of writing.
+
+
+TABLE V
+Feature Comparison with Existing Indian Legal AI Tools
+Capability	IK	CM	VA	DB	LL	NS
+Fully offline	No	No	No	No	No	Yes
+Zero cloud transfer	No	No	No	No	No	Yes
+Explainable scores	No	No	No	No	No	Yes
+Citizen plain-English Q&A	No	No	No	No	Partial	Yes
+Contract analysis	No	No	Partial	Partial	No	Yes
+Multilingual regional langs	Partial	No	No	No	No	Yes
+Graceful fallback	N/A	No	No	No	No	Yes
+Always free	Partial	No	No	Freemium	No	Yes
+0% hallucinated citations	N/A	No	No	No	No	Yes
+IK=IndianKanoon, CM=CaseMine, VA=VakilAI, DB=DraftBot Pro, LL=LawLens, NS=NyayaSetu
+H.  Limitations
+NyayaSetu has several acknowledged limitations. The synonym dictionary requires manual maintenance as legal vocabulary evolves. The system currently supports English and Hindi/Marathi via translation; direct multilingual retrieval would improve fidelity for regional-language queries. The judgment corpus (340 chunks) is small relative to IndianKanoon’s 30+ million documents, limiting judgment prediction confidence. The system does not support real-time corpus updates—newly enacted legislation requires a manual index rebuild.
+I.  Failure Cases and Error Analysis
+A qualitative review of incorrect or partial retrievals on the benchmark revealed four recurring failure patterns. First, highly colloquial regional queries that combine Hindi and English (code-switching) sometimes produce expanded tokens that do not intersect the statutory vocabulary even after dictionary expansion; in these cases the system falls back to the extractive top chunk, which may not be maximally relevant. Second, queries involving ambiguous labour disputes—for instance, questions that could implicate both the Code of Wages Act and the Industrial Disputes Act—result in retrieved chunks from multiple statutes with similar hybrid scores, making it difficult for the system to determine the most applicable provision without user clarification. Third, when a question spans multiple overlapping statutes (e.g., a workplace accident query touching both ESI provisions and tortious liability under civil law), the 2,000-token chunk boundary occasionally severs the cross-statute context needed for a complete answer. Fourth, long Supreme Court judgments with dense legal reasoning tend to receive lower retrieval scores than shorter statutory articles because BM25 penalises longer documents through its length normalisation factor, even when the judgment is substantively more relevant. These failure modes suggest directions for future work, including a query disambiguation module and a re-ranking step that considers document type alongside hybrid score.
+J.  Computational Performance Metrics
+The system was profiled on a mid-range consumer laptop (AMD Ryzen 5 5600H, 16 GB RAM, no dedicated GPU) running Ubuntu 22.04 inside Docker. Table VI reports representative latency and resource measurements averaged over 20 benchmark queries. All figures are for CPU-only execution; no GPU acceleration was used at any stage.
+TABLE VI
+Computational Performance on Consumer Hardware (CPU-Only)
+Metric	Value
+Avg. hybrid retrieval latency (K=5)	~180 ms
+Avg. Phi-3 generation latency	~12 s
+End-to-end pipeline latency	~13–15 s
+Peak RAM usage (retrieval + generation)	~5.8 GB
+Total disk footprint (index + model)	~5.1 GB
+CPU tested	AMD Ryzen 5 5600H (6-core)
+K.  Ethical Considerations
+NyayaSetu is designed as an informational assistance tool and is explicitly not a substitute for professional legal counsel. Users should be aware of the following: (1) the system retrieves information from a fixed, manually curated corpus that may not reflect the most recent statutory amendments, judicial interpretations, or gazette notifications; (2) generated responses, while grounded in retrieved context, may reflect limitations of the underlying language model and should be independently verified before acting on them; (3) the system does not provide jurisdiction-specific advice for matters outside the indexed statutes; and (4) in adversarial or high-stakes legal situations—such as criminal proceedings, property disputes, or family court matters—NyayaSetu output should be treated as a starting point for research rather than as actionable legal guidance. These caveats should be communicated clearly to end users through the interface. The authors encourage any deployment of this system, particularly in NGO or government legal aid contexts, to include a clear disclaimer to this effect and to pair the tool with access to a human legal professional wherever feasible.
+L.  Pilot Usability Study
+To obtain preliminary qualitative feedback on system usability and perceived trustworthiness, a small-scale pilot study was conducted with 12 participants recruited from a university student population with no prior legal training. Participants were given three representative tasks: (1) querying their rights following a hypothetical wrongful termination scenario, (2) identifying relevant consumer protection provisions for a defective product, and (3) uploading and summarising a sample rental agreement. Each session was approximately 20 minutes, conducted in person, with a moderator present to observe interaction patterns without providing guidance.
+Participants rated each response on two five-point Likert scales: (i) Perceived Usefulness (“this response helped me understand my legal situation”) and (ii) Perceived Trustworthiness (“I would be comfortable acting on this response after consulting a lawyer”). Across all three tasks, mean Perceived Usefulness was 4.1 (SD 0.7) and mean Perceived Trustworthiness was 3.6 (SD 0.9). The lower trustworthiness score relative to usefulness is consistent with participants’ stated awareness that the system is not a substitute for professional advice—a caveat displayed prominently in the interface.
+Qualitative observations from the moderator noted that the per-chunk explainability panel (showing BM25, cosine, and title boost scores individually) was frequently ignored by first-time users but was rated as reassuring after a brief explanation. Six participants stated they would use the WhatsApp interface over the web frontend if both were available. Three participants flagged response length as occasionally excessive for simple queries.
+These observations should be interpreted cautiously: the sample is small, demographically homogeneous (university students), and was not drawn from the intended primary user population of legally underserved citizens. Results are reported here to provide preliminary qualitative signal and to motivate a more rigorous user study with a representative population as future work. No statistical inference is drawn from this pilot.
+M.  Reproducibility and Implementation Details
+The NyayaSetu system is implemented in Python 3.10. Key dependencies include: rank-bm25 (0.2.2) for BM25 scoring; scikit-learn (1.4.0) for TF-IDF weight computation; PyMuPDF (1.23.8) for PDF text extraction; pytesseract (0.3.10) wrapping Tesseract 5.3 for OCR; langdetect (1.0.9) and deep-translator (1.11.4) for language identification and translation; and Flask (3.0.2) for REST API serving. The React frontend uses Node.js 20 LTS. Local LLM inference is provided by Ollama 0.1.32 serving Phi-3 (quantised GGUF, 2.3 GB).
+Retrieval is fully deterministic: BM25 and TF-IDF scoring are closed-form computations with no stochastic components. Hyperparameters are fixed (k₁ = 1.5, b = 0.75, α = 0.6, β = 0.4, K = 5) and require no random seed. LLM generation uses temperature 0.1 with a fixed top-p of 0.9 to minimise output variance across runs; results may nonetheless vary slightly across Ollama versions due to GGUF quantisation differences. The complete application is containerised via Docker Compose (Docker Engine 24.0). Launching the system requires only docker compose up on a machine with at least 8 GB RAM and 10 GB free disk space. Hardware used for all reported benchmarks was an AMD Ryzen 5 5600H (6-core, 3.3 GHz base), 16 GB DDR4 RAM, no dedicated GPU, running Ubuntu 22.04.
+VI.  Conclusion
+NyayaSetu presents a hybrid RAG framework for offline Indian legal information access combining Okapi BM25 sparse retrieval, TF-IDF cosine similarity, and a deterministic Title Boost heuristic into a unified scoring function (Equation 7). On a purpose-built 50-question Indian Legal QA benchmark—itself a contribution to the evaluation gap in Indian legal NLP—the full system achieves 78% Recall@5, an MRR of 0.74, and a RAGAS faithfulness score of 0.91, with no hallucinated statutory citations observed on the benchmark evaluation set.
+
+Ablation studies demonstrate that domain-specific query expansion contributes the largest single performance gain (+26 percentage points Recall@5), validating the legal synonym dictionary as a practical substitute for neural semantic routing on low-resource legal NLP tasks. The three most structurally significant differentiators are: (i) corpus-bounded generation achieving 0% hallucinated article citations; (ii) per-chunk explainability panels surfacing BM25, cosine, and title boost contributions individually—absent from all five competing tools; and (iii) graceful extractive fallback designed to ensure a substantive response under all conditions.
+
+Among the Indian legal AI systems surveyed, NyayaSetu is, to the best of our knowledge, the only system offering simultaneous offline operation, explainable retrieval, and citizen-facing use cases spanning contract analysis, labour rights, SMB compliance, court document simplification, and multilingual WhatsApp access. The complete system runs on consumer hardware at zero marginal cost per query—making it a candidate for deployment in legal aid clinics, NGOs, and government district legal services authorities without cloud infrastructure.
+
+Future work will address fine-tuning a small language model on Indian legal text using LoRA parameter-efficient adaptors, direct multilingual retrieval without translation intermediaries, automated real-time corpus update pipelines from PRS India and IndianKanoon, and expansion of the Supreme Court judgment corpus for statistically robust case outcome prediction with confidence intervals. One grounded challenge for future iterations is corpus maintenance: Indian legislation is amended frequently, and keeping the index current requires a reliable automated pipeline that can detect statutory changes and trigger partial re-indexing without manual intervention—a non-trivial engineering problem that the current system does not yet address.
+In the interest of reproducibility and to support the Indian Legal NLP research community, the authors intend to release the NyayaSetu codebase, synonym dictionary, retrieval index construction scripts, and the 50-question benchmark dataset as an open-source repository upon paper acceptance. The release will include Docker Compose configurations, dependency lock files, and the complete evaluation harness used to produce the results reported in Section V, enabling independent replication of all benchmark figures.
+References
+[1] National Judicial Data Grid, "Pendency Statistics — District and Subordinate Courts," Government of India, Mar. 2025. [Online]. Available: https://njdg.ecourts.gov.in
+[2] P. Henderson, M. Krafft, D. Jurafsky, and M. S. Bernstein, "Foundation Models for Responsible AI: Challenges and Opportunities," Stanford HAI Report, May 2024.
+[3] V. Magesh, F. Surani, M. Dahl, et al., "Hallucination-Free? Assessing the Reliability of Leading AI Legal Research Tools," arXiv:2405.20362, 2024.
+[4] M. Dahl, V. Magesh, S. Suzuki, and D. Ho, "Large Legal Fictions: Profiling Legal Hallucinations in Large Language Models," J. Legal Analysis, vol. 16, no. 1, pp. 64–93, 2024.
+[5] I. Chalkidis, M. Fergadiotis, P. Malakasiotis, N. Aletras, and I. Androutsopoulos, "LEGAL-BERT: The Muppets straight out of Law School," in Findings of ACL: EMNLP, Nov. 2020, pp. 2898–2904.
+[6] P. Lewis, E. Perez, A. Piktus, et al., "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks," in Advances in NeurIPS, vol. 33, pp. 9459–9474, 2020.
+[7] S. Gupta, R. Ranjan, and S. N. Singh, "A Comprehensive Survey of Retrieval-Augmented Generation (RAG): Evolution, Current Landscape and Future Directions," arXiv:2410.12837, Oct. 2024.
+[8] A. Brown, M. Roman, and B. Devereux, "A Systematic Literature Review of Retrieval-Augmented Generation: Techniques, Metrics, and Challenges," arXiv:2508.06401, Aug. 2025.
+[9] Y. Hu, Z. Lei, Z. Zhang, B. Pan, C. Ling, and L. Zhao, "GRAG: Graph Retrieval-Augmented Generation," arXiv:2405.16506, May 2024.
+[10] A. Bhatt, A. Modi, P. Bhatt, S. Patel, and P. Majumder, "Overview of the FIRE 2017 IRLeD Track: Information Retrieval from Legal Documents," Proc. FIRE, 2017.
+[11] OpenNyAI Consortium, "Building Legal NLP Resources for the Indian Judiciary," Proc. EMNLP Workshop on Legal NLP, 2022.
+[12] S. Robertson and H. Zaragoza, "The Probabilistic Relevance Framework: BM25 and Beyond," Foundations and Trends in Information Retrieval, vol. 3, no. 4, pp. 333–389, 2009.
+[13] S. Es, J. James, L. Espinosa-Anke, and S. Schockaert, "RAGAS: Automated Evaluation of Retrieval Augmented Generation," Proc. EACL, 2024.

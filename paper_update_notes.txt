@@ -1,0 +1,101 @@
+NyayaSetu paper update notes (repo-derived)
+Date: 2026-05-18
+Scope: Features, corpora, retrieval, LLMs, modules, evaluation, and deployment details as implemented in the current codebase.
+
+1) System overview
+- Hybrid RAG legal assistant focused on Indian law and citizen-facing legal help.
+- Backend: Flask (Python). Frontend: React. Local LLM via Ollama with Gemini fallback. Optional Streamlit app for judgment prediction.
+- Retrieval: BM25 + TF-IDF cosine + title-boost hybrid scoring with legal synonym query expansion.
+
+2) Corpora and document sources
+Primary sources used in retrieval:
+- Constitution of India text is stored as a canonical corpus file and used as a core reference.
+- Case corpus: multiple Supreme Court judgment text files in case_corpus/ (topic-tagged files such as anticipatory_bail_*.txt, arbitration_and_conciliation_*.txt, compassionate_appointment_*.txt, etc.).
+- Statutory acts in corpus/ (PDFs): Consumer Protection Act 2019, Domestic Violence Act 2005, Shops and Establishments Act, Code of Wages Act 2019.
+
+Index size (current):
+- Total indexed chunks are now ~13,000 (updated from ~2,600 in the earlier draft).
+
+Dynamic corpus additions:
+- Document Intelligence module supports runtime ingestion of user-uploaded PDFs, DOCX, and images into an in-memory store for retrieval.
+
+3) Retrieval and ranking
+Chunking and indexing:
+- Chunk size and overlap vary by corpus: Constitution/general ~2000 tokens with 400 overlap; case law ~2200 tokens with 350 overlap; precedent module ~1800 tokens with 220 overlap.
+- Article-aware splitting on ARTICLE/PART/SCHEDULE boundaries with fallback to token-window splitting for oversized sections.
+
+Hybrid scoring:
+- Score = 0.6 * BM25 + 0.4 * (TF-IDF cosine * 10) + Title Boost
+- Title Boost: +2 for each query term found in a chunk title
+- BM25 parameters: k1 = 1.5, b = 0.75
+
+Query expansion:
+- Domain-specific legal synonym mapping (for terms like arrest, custody, remand, bail, etc.) to bridge colloquial queries and statutory terminology.
+
+Explainability:
+- Retrieval results include score breakdown per chunk: hybrid score, BM25, TF-IDF cosine, title boost, and matched terms.
+
+4) LLM configuration and generation policy
+- Primary provider: Ollama (local) with phi3 (default) or phi3:mini; embedding model nomic-embed-text used in precedent module.
+- Fallback provider: Gemini (gemini-1.5-flash) if Ollama is unavailable or times out.
+- Generation policy: LLM is called only with retrieved context; top 3 chunks are included with strict instructions to answer only from context. If generation is unavailable, retrieval-only response is returned.
+- Low temperature for consistency (Ollama 0.1, Gemini 0.3).
+
+5) Domain routing and citizen workflows
+- Situation classifier uses keyword-based rules to assign domain (labour, tenant, consumer, domestic_violence) and confidence level.
+- Domain profiles add case type, forum, opposite party, limitation period, evidence checklist, and do/avoid guidance.
+
+6) Document intelligence module
+- Supports PDF, DOCX, and image extraction. Uses PyMuPDF, OCR via Tesseract, and image preprocessing for scanned documents.
+- Contract risk analyzer: 27 risky clause patterns (regex + constitutional grounding queries).
+- Court notice decoder: extracts dates and cited sections, retrieves meanings via RAG, and generates action items.
+
+7) Judgment prediction (precedent module)
+- Separate module with hybrid retrieval over judgments using Chroma vector DB plus BM25.
+- Scores combine vector similarity (55%) and BM25 (45%).
+- Chunking tags FACTS vs VERDICT; verdict inference uses tail extraction (final portion of judgment text).
+- Streamlit app available for interactive prediction (default port 8501 in docker-compose).
+
+8) Drafting module (NyayaDraft)
+- Template listing endpoint and DOCX generation endpoint.
+- Supports template retrieval, document generation from user inputs, and PDF sanitization.
+
+9) API endpoints (selected)
+- /legal-help
+- /document-intel/upload
+- /document-intel/summarize
+- /document-intel/contract-analyze
+- /document-intel/court-notice-decode
+- /nyayadraft/templates
+- /nyayadraft/templates/<name>
+- /nyayadraft/docx
+- /nyayadraft/sanitize-pdf
+- /judgement-prediction
+
+10) Frontend features
+- React 18 + React Router. Main LegalQuery page with explainability panel (score breakdown per chunk).
+- Dedicated pages for judgment prediction, document drafting, FAQ, privacy/terms.
+- Light/dark theme toggle, animations, and mobile-responsive navigation.
+
+11) Evaluation artifacts
+- Recall@5 benchmark stored in backend/benchmarks/results/recall_at_5.json. Current value recorded there is 66% (33/50).
+- RAGAS faithfulness pipeline is wired in backend/benchmarks/results/faithfulness.json but currently shows NaN scores (infrastructure present, scores not stable yet).
+- Benchmark script: backend/rag_benchmark.py with 50 test cases across constitutional + statutory domains.
+
+12) Deployment and requirements
+- Docker Compose includes backend, frontend, Ollama, model pull init, and precedent-forecaster service.
+- Requirements include Flask, PyMuPDF, pytesseract, python-docx, langdetect, reportlab, opencv-python-headless, and google-generativeai.
+- OCR requires Tesseract installed on host OS.
+
+13) Notable changes vs earlier paper draft
+- Added document intelligence suite (contract analyzer, court notice decoder, document summarization).
+- Added judgment prediction (precedent module) using Chroma + BM25 hybrid retrieval and Streamlit UI.
+- Added domain-aware routing and structured response schema.
+- Added explainability panel in frontend (score breakdown).
+- Updated benchmark reporting (Recall@5 now 66% in repo artifacts; faithfulness pipeline present but not finalized).
+- Multi-source corpora now include judgments and user-uploaded documents in addition to statutes.
+- Index scale increased to ~13k chunks (vs ~2.6k earlier).
+
+Notes for paper update
+- Align reported metrics with repo artifacts (Recall@5 66% unless rerun). If you plan to keep 78% or 0.91 faithfulness, re-run benchmarks and update results.
+- If describing RAGAS faithfulness, clarify that the pipeline is present but values are not stable in the current artifact file.

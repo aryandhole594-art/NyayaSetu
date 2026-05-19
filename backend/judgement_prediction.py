@@ -499,6 +499,7 @@ def fallback_prediction(facts: str, similar_cases: list[dict]) -> dict:
     outcome = outcome_from_probability(probability, negative_hits)
     top_case = similar_cases[0] if similar_cases else {}
     ratio_items = build_ratio_analysis(similar_cases, outcome, positive_hits, negative_hits)
+    top_case_suffix = f", led by {top_case.get('source_file')}" if top_case else ""
 
     return normalize_prediction(
         {
@@ -508,7 +509,7 @@ def fallback_prediction(facts: str, similar_cases: list[dict]) -> dict:
             "issue_identified": profile["issue"],
             "plain_english": (
                 f"Your facts were matched primarily with {profile['issue'].lower()} precedents"
-                f"{f', led by {top_case.get('source_file')}' if top_case else ''}. "
+                f"{top_case_suffix}. "
                 f"The corpus-based estimate is {probability}% because the facts contain "
                 f"{', '.join(positive_hits[:4]) if positive_hits else 'some matching legal signals'}"
                 f"{' but also risk signals such as ' + ', '.join(negative_hits[:3]) if negative_hits else ''}."

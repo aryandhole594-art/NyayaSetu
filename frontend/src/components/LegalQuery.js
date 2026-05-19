@@ -194,6 +194,8 @@ function SectionCard({ section, index }) {
   );
 }
 
+// Legacy renderer retained while the grouped result flow settles.
+// eslint-disable-next-line no-unused-vars
 function StructuredPanel({ structured, urgency, result, onFollowup }) {
   if (!structured) {
     return <p className="empty-state">No structured brief available.</p>;
@@ -675,6 +677,651 @@ function StructuredPanel({ structured, urgency, result, onFollowup }) {
   );
 }
 
+function getLegalBriefData(result) {
+  const structured = result.structured || {};
+  const meta = structured.meta || {};
+  const summary = structured.summary || {};
+  const plain = structured.plain_words || {};
+  const parties = structured.parties || {};
+  const laws = structured.applicable_laws || result.articles_cited || [];
+  const rights = structured.rights_vs_limits?.rights || result.your_rights || [];
+  const limits = structured.rights_vs_limits?.limits || [];
+  const steps = structured.steps || (result.next_steps || []).map((step, i) => ({
+    step_no: i + 1,
+    action: step,
+    timeframe: normalizeTimelineTimeframe({}, i),
+  }));
+
+  return {
+    structured,
+    meta,
+    summary,
+    plain,
+    parties,
+    laws,
+    rights,
+    limits,
+    steps,
+    forum: structured.forum_comparison || {},
+    relief: structured.relief_spectrum || [],
+    strength: structured.case_strength || [],
+    costBenefit: structured.cost_benefit || {},
+    clauseRisks: structured.clause_risks || [],
+    evidence: structured.evidence_checklist || [],
+    doList: structured.do_and_avoid?.do || [],
+    avoidList: structured.do_and_avoid?.avoid || [],
+    misconceptions: structured.misconceptions || [],
+    similar: structured.similar_cases || [],
+    followups: structured.followups || [],
+    activeDomain: meta.domain || result.explainability?.detected_domain || 'Legal domain',
+  };
+}
+
+function LegalCaseOverview({ data, result, urgency, viewMode }) {
+  const { meta, summary, plain, parties, activeDomain } = data;
+  const confidenceValue = typeof meta.confidence === 'number' ? meta.confidence : result.explainability?.confidence;
+  const confidenceLabel = typeof confidenceValue === 'number' ? `${confidenceValue}% confident` : 'Grounded brief';
+  const issueTitle = meta.case_type || result.case_type || summary.signal || 'Legal issue identified';
+  const issueSubline = [
+    activeDomain,
+    parties.forum || 'Forum to be confirmed',
+    urgency?.level ? `${urgency.level} urgency` : null,
+  ].filter(Boolean).join(' / ');
+
+  return (
+    <>
+      <section className="case-query-card">
+        <div>
+          <span className="case-query-label">Your query</span>
+          <p>{result.query}</p>
+        </div>
+        <span className="confidence-badge">{confidenceLabel}</span>
+      </section>
+
+      <section className="issue-panel">
+        <div className="issue-accent" />
+        <div className="issue-copy">
+          <h3>{issueTitle}</h3>
+          <p>{issueSubline}</p>
+          <div className="brief-meta">
+            {summary.signal && <span className="meta-chip warm">{summary.signal}</span>}
+            {meta.in_scope === false && <span className="meta-chip warning">Out of corpus</span>}
+            {result.ai_powered && <span className="meta-chip">RAG assisted</span>}
+          </div>
+        </div>
+      </section>
+
+      {plain.short_explanation && (
+        <section className="plain-words-panel">
+          <div className="section-heading compact">
+            <h4>Overview</h4>
+            {viewMode === 'detailed' && <span className="section-caption">Plain-language reading of the facts</span>}
+          </div>
+          <div className="plain-words-copy">{plain.short_explanation}</div>
+        </section>
+      )}
+    </>
+  );
+}
+
+function DomainRoutingCard({ activeDomain }) {
+  return (
+    <section className="domain-routing-panel">
+      <div className="section-heading compact">
+        <div className="title-with-info">
+          <h4>Domain Routing</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Shows the legal domain detected for your query and which corpus is being used.</span></div>
+        </div>
+      </div>
+      <div className="routing-chips">
+        {['Constitutional Law', 'Consumer Protection', 'Criminal Law', 'IT Law', 'Civil Procedure'].map(domain => (
+          <span
+            key={domain}
+            className={`routing-chip ${activeDomain.toLowerCase().includes(domain.toLowerCase().split(' ')[0]) ? 'active' : ''}`}
+          >
+            {domain}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CaseSnapshotCard({ data, urgency, viewMode }) {
+  const { meta, parties } = data;
+  const snapshotRows = [
+    ['Domain', meta.domain || 'General legal query'],
+    ['Confidence', typeof meta.confidence === 'number' ? `${meta.confidence}%` : 'Unknown'],
+    ['Likely forum', parties.forum || 'To be confirmed'],
+    ...(viewMode === 'detailed' ? [
+      ['Provider', meta.llm_provider || 'AI assisted'],
+      ['Urgency', urgency?.level || 'Standard'],
+      ['Corpus fit', meta.in_scope === false ? 'Out of corpus' : 'In constitutional scope'],
+    ] : [
+      ['Urgency', urgency?.level || 'Standard'],
+    ]),
+  ];
+
+  return (
+    <section className="brief-card brief-card-spotlight">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Case Snapshot</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">A quick overview of the legal domain, confidence level, likely forum, and urgency of your case.</span></div>
+        </div>
+        <span className="section-caption">{viewMode === 'detailed' ? 'Matter profile' : 'Fast read'}</span>
+      </div>
+      <div className="snapshot-table-wrap">
+        <table className="snapshot-table">
+          <tbody>
+            {snapshotRows.map(([label, value]) => (
+              <tr key={label}>
+                <th>{label}</th>
+                <td>{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function EntityMapCard({ parties, result }) {
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Entity Map</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Visualize the relationships between the claimant, respondent, and the legal forum.</span></div>
+        </div>
+        <span className="section-caption">Who, what, where</span>
+      </div>
+      <div className="entity-flow">
+        <div className="entity-node">
+          <span className="entity-label">Claimant</span>
+          <strong>{parties.complainant || 'You'}</strong>
+        </div>
+        <div className="entity-connector" />
+        <div className="entity-node">
+          <span className="entity-label">Respondent</span>
+          <strong>{parties.opposite_party || 'Respondent'}</strong>
+        </div>
+        <div className="entity-connector" />
+        <div className="entity-node">
+          <span className="entity-label">Forum</span>
+          <strong>{parties.forum || 'Authority'}</strong>
+        </div>
+      </div>
+      <div className="entity-subject-panel">
+        <span className="entity-label">Subject</span>
+        <p>{parties.subject || result.query || 'Legal issue summary unavailable.'}</p>
+      </div>
+    </section>
+  );
+}
+
+function ApplicableLawsCard({ laws, viewMode }) {
+  const visibleLaws = viewMode === 'simple' ? laws.slice(0, 3) : laws;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Applicable Laws</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Key statutes, constitutional articles, and legal provisions relevant to your scenario.</span></div>
+        </div>
+        <span className="section-caption">Primary legal support</span>
+      </div>
+      {visibleLaws.length > 0 ? (
+        <div className="law-grid">
+          {visibleLaws.map((law, i) => (
+            <div key={`${law.name || law.title}-${i}`} className="law-card">
+              <div className="law-card-head">
+                <strong>{law.name || law.title || `Law ${i + 1}`}</strong>
+                {law.type && <span className="law-type">{law.type}</span>}
+              </div>
+              {(law.why_it_applies || law.relevance) && <p>{law.why_it_applies || law.relevance}</p>}
+              {law.citations?.length > 0 && (
+                <div className="law-citations">
+                  {law.citations.map(c => (
+                    <span key={c} className="law-chip">{c}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-state">No laws extracted for this query.</p>
+      )}
+    </section>
+  );
+}
+
+function CaseStrengthCard({ strength, viewMode }) {
+  const visibleStrength = viewMode === 'simple' ? strength.slice(0, 2) : strength;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Case Strength</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">An AI-driven estimation of the matter's standing based on retrieved precedents and legal factors.</span></div>
+        </div>
+        <span className="section-caption">What helps or weakens the matter</span>
+      </div>
+      <div className="strength-grid">
+        {visibleStrength.length > 0 ? visibleStrength.map((s, i) => (
+          <div key={`${s.label}-${i}`} className="strength-item">
+            <div className="strength-label">
+              <span>{s.label}</span>
+              <span className="strength-value">{Math.min(100, s.score || 0)}%</span>
+            </div>
+            <div className="strength-bar">
+              <div className="strength-fill" style={{ width: `${Math.min(100, s.score || 0)}%` }} />
+            </div>
+            {viewMode === 'detailed' && <div className="strength-note">{s.note || 'No note available.'}</div>}
+          </div>
+        )) : (
+          <div className="strength-empty">
+            <span className="empty-number">01</span>
+            <p>No strength signals available yet. Evidence and documents will shape this most.</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RightsAndLimitsCards({ rights, limits, viewMode }) {
+  const visibleRights = viewMode === 'simple' ? rights.slice(0, 4) : rights;
+  const visibleLimits = viewMode === 'simple' ? limits.slice(0, 4) : limits;
+
+  return (
+    <div className="brief-grid">
+      <section className="brief-card">
+        <div className="section-heading">
+          <div className="title-with-info">
+            <h4>Rights You Can Claim</h4>
+            <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Legal rights that apply to your situation based on constitutional and statutory provisions.</span></div>
+          </div>
+          <span className="section-caption">Strongest visible rights</span>
+        </div>
+        <div className="pill-list">
+          {visibleRights.length > 0 ? visibleRights.map((item, i) => (
+            <div key={`${item}-${i}`} className="info-pill positive">{item}</div>
+          )) : <p className="empty-state">No rights extracted.</p>}
+        </div>
+      </section>
+
+      <section className="brief-card">
+        <div className="section-heading">
+          <div className="title-with-info">
+            <h4>Limits & Watchouts</h4>
+            <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Practical limitations and legal boundaries you should be aware of before taking action.</span></div>
+          </div>
+          <span className="section-caption">Cautions before acting</span>
+        </div>
+        <div className="pill-list">
+          {visibleLimits.length > 0 ? visibleLimits.map((item, i) => (
+            <div key={`${item}-${i}`} className="info-pill caution">{item}</div>
+          )) : <p className="empty-state">No limitations extracted.</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ActionTimelineCard({ steps, viewMode }) {
+  const visibleSteps = viewMode === 'simple' ? steps.slice(0, 3) : steps;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Action Timeline</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">A step-by-step timeline of recommended legal actions, ordered by urgency and importance.</span></div>
+        </div>
+        <span className="section-caption">Sequenced by urgency</span>
+      </div>
+      {visibleSteps.length > 0 ? (
+        <div className="timeline-horizontal">
+          <div className="timeline-rail" />
+          {visibleSteps.map((s, i) => (
+            <div key={`${s.action || 'step'}-${i}`} className="timeline-stop">
+              <div className="timeline-marker">
+                <span className="timeline-index">{i + 1}</span>
+              </div>
+              <div className="timeline-time">{normalizeTimelineTimeframe(s, i)}</div>
+              <div className="timeline-card">
+                <div className="timeline-title">{s.action || 'Step'}</div>
+                <div className="timeline-meta">Action</div>
+                {viewMode === 'detailed' && s.why && <p className="timeline-note">{s.why}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-state">No steps available.</p>
+      )}
+    </section>
+  );
+}
+
+function EvidenceCard({ evidence, viewMode }) {
+  const visibleEvidence = viewMode === 'simple' ? evidence.slice(0, 6) : evidence;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Evidence Checklist</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Documents, records, and proof you should gather to strengthen your legal position.</span></div>
+        </div>
+        <span className="section-caption">Documents to gather now</span>
+      </div>
+      <div className="checklist-grid">
+        {visibleEvidence.length > 0 ? visibleEvidence.map((item, i) => (
+          <div key={`${item}-${i}`} className="check-card">{item}</div>
+        )) : <p className="empty-state">No evidence checklist available.</p>}
+      </div>
+    </section>
+  );
+}
+
+function DoAvoidCard({ doList, avoidList, viewMode }) {
+  const visibleDo = viewMode === 'simple' ? doList.slice(0, 4) : doList;
+  const visibleAvoid = viewMode === 'simple' ? avoidList.slice(0, 4) : avoidList;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Dos & Avoids</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Practical actions that can improve your position, and mistakes to avoid during the process.</span></div>
+        </div>
+        <span className="section-caption">Practical moves</span>
+      </div>
+      <div className="dual-callout">
+        <div className="callout-panel do-panel">
+          <span className="callout-label">Do this</span>
+          <div className="stack-list">
+            {visibleDo.length > 0 ? visibleDo.map((item, i) => (
+              <div key={`${item}-${i}`} className="stack-item">{item}</div>
+            )) : <div className="stack-item muted">No action items listed.</div>}
+          </div>
+        </div>
+        <div className="callout-panel avoid-panel">
+          <span className="callout-label">Avoid this</span>
+          <div className="stack-list">
+            {visibleAvoid.length > 0 ? visibleAvoid.map((item, i) => (
+              <div key={`${item}-${i}`} className="stack-item">{item}</div>
+            )) : <div className="stack-item muted">No avoid items listed.</div>}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FollowupsCard({ followups, onFollowup }) {
+  if (!followups.length) return null;
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Useful Follow-Ups</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Suggested questions to explore next for a deeper understanding of your legal situation.</span></div>
+        </div>
+        <span className="section-caption">Questions worth asking next</span>
+      </div>
+      <div className="followup-list">
+        {followups.map((f, i) => (
+          <button
+            key={`${f}-${i}`}
+            type="button"
+            className="followup-chip followup-btn"
+            onClick={() => onFollowup?.(f)}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DetailedOptionalCards({ data }) {
+  const { structured, forum, relief, costBenefit, clauseRisks, misconceptions, similar } = data;
+
+  return (
+    <>
+      {structured.compliance_checklist?.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Compliance Checklist</h4>
+            <span className="section-caption">Requirements based on business type and employee count</span>
+          </div>
+          <div className="checklist-grid">
+            {structured.compliance_checklist.map((item, i) => (
+              <div key={`${item.act}-${i}`} className={`check-card ${item.status || ''}`} style={{ borderColor: item.status === 'applicable' ? 'var(--lq-success)' : 'var(--lq-amber)' }}>
+                <strong>{item.status_symbol || '-'} {item.act}</strong>
+                <p style={{ marginTop: '8px', color: 'var(--lq-text-soft)' }}>{item.requirement_summary}</p>
+                {item.sources?.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <span className="meta-chip" style={{ fontSize: '0.75rem' }}>Sources: {item.sources.join(', ')}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {forum.rows?.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Forum Comparison</h4>
+            <span className="section-caption">Compare where the matter can be taken</span>
+          </div>
+          <div className="forum-table-wrap">
+            <table className="forum-table">
+              <thead>
+                <tr>
+                  <th>Factor</th>
+                  {(forum.forums || []).map(f => <th key={f}>{f}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {forum.rows.map((row, i) => (
+                  <tr key={`${row.factor}-${i}`}>
+                    <td>{row.factor}</td>
+                    {(row.values || []).map((v, idx) => <td key={`${row.factor}-${idx}`}>{v}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {(relief.length > 0 || costBenefit.invest?.length > 0 || costBenefit.recover?.length > 0) && (
+        <div className="brief-grid">
+          {relief.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Relief Spectrum</h4>
+                <span className="section-caption">Typical outcomes to aim for</span>
+              </div>
+              <div className="relief-list">
+                {relief.map((r, i) => (
+                  <div key={`${r.label}-${i}`} className="relief-item">
+                    <div className="relief-copy">
+                      <div className="relief-label">{r.label}</div>
+                      <div className="relief-range">{r.range}</div>
+                    </div>
+                    <div className={`relief-bar ${r.level || ''}`}>
+                      <div style={{ width: `${Math.min(100, r.likelihood || 0)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {(costBenefit.invest?.length > 0 || costBenefit.recover?.length > 0) && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Cost and Recovery</h4>
+                <span className="section-caption">Likely inputs versus possible returns</span>
+              </div>
+              <div className="cost-benefit">
+                <div className="cost-panel">
+                  <h5>What you invest</h5>
+                  {(costBenefit.invest || []).map((item, i) => (
+                    <div key={`${item.item}-${i}`} className="cost-row">
+                      <span>{item.item}</span>
+                      <strong>{item.amount}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="benefit-panel">
+                  <h5>What you can recover</h5>
+                  {(costBenefit.recover || []).map((item, i) => (
+                    <div key={`${item.item}-${i}`} className="cost-row">
+                      <span>{item.item}</span>
+                      <strong>{item.amount}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {clauseRisks.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Clause Risk Scanner</h4>
+            <span className="section-caption">Terms that may need revision or caution</span>
+          </div>
+          <div className="risk-list">
+            {clauseRisks.map((c, i) => (
+              <div key={`${c.clause}-${i}`} className={`risk-item ${c.risk_level || 'medium'}`}>
+                <div className="risk-head">
+                  <strong>{c.clause}</strong>
+                  <span className="risk-level">{c.risk_level}</span>
+                </div>
+                <p>{c.issue}</p>
+                {c.fix && <div className="risk-fix">Fix: {c.fix}</div>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(misconceptions.length > 0 || similar.length > 0) && (
+        <div className="brief-grid">
+          {misconceptions.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <h4>Common Misconceptions</h4>
+                <span className="section-caption">Quick legal corrections worth knowing</span>
+              </div>
+              <div className="misconceptions">
+                {misconceptions.map((m, i) => (
+                  <div key={`${m.claim}-${i}`} className="misconception-item">
+                    <div className="misconception-claim">{m.claim}</div>
+                    <div className="misconception-truth">{m.truth}</div>
+                    {m.explanation && <div className="misconception-note">{m.explanation}</div>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {similar.length > 0 && (
+            <section className="brief-card">
+              <div className="section-heading">
+                <div className="title-with-info">
+                  <h4>Similar Precedents</h4>
+                  <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Court cases with similar facts and outcomes that can guide expectations.</span></div>
+                </div>
+                <span className="section-caption">Comparable court outcomes</span>
+              </div>
+              <div className="precedent-row">
+                {similar.map((c, i) => (
+                  <div key={`${c.case_name}-${i}`} className="precedent-card">
+                    <div className="precedent-title">{c.case_name}</div>
+                    <div className="precedent-meta">{c.court} / {c.year}</div>
+                    <div className="precedent-outcome">{c.outcome}</div>
+                    {c.similarity && (
+                      <div className="precedent-bar">
+                        <div style={{ width: `${c.similarity.replace('%', '')}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ExplainabilityCard({ explainability, viewMode }) {
+  if (!explainability) {
+    return <p className="empty-state">No explainability insights available for this query.</p>;
+  }
+
+  return (
+    <section className="brief-card">
+      <div className="section-heading">
+        <div className="title-with-info">
+          <h4>Explainability</h4>
+          <div className="info-trigger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span className="info-tooltip">Transparency details on how the AI built this answer, including domain detection and source documents.</span></div>
+        </div>
+        <span className="section-caption">How this answer was built</span>
+      </div>
+      <div className="snapshot-table-wrap">
+        <table className="snapshot-table">
+          <tbody>
+            <tr>
+              <th>Detected Domain</th>
+              <td><strong>{explainability.detected_domain || 'Unknown'}</strong></td>
+            </tr>
+            <tr>
+              <th>Confidence</th>
+              <td>{explainability.confidence || 'N/A'}%</td>
+            </tr>
+            {viewMode === 'detailed' && (
+              <>
+                <tr>
+                  <th>Matched Keywords</th>
+                  <td>{(explainability.matched_keywords || []).join(', ') || 'None'}</td>
+                </tr>
+                <tr>
+                  <th>Explanation</th>
+                  <td>{explainability.short_explanation}</td>
+                </tr>
+                <tr>
+                  <th>Chunks Used</th>
+                  <td>{explainability.number_of_chunks_used || 0}</td>
+                </tr>
+              </>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function StepCard({ step, index }) {
   return (
     <div className="step-card" style={{ animationDelay: `${index * 60}ms` }}>
@@ -687,6 +1334,7 @@ function StepCard({ step, index }) {
   );
 }
 
+// eslint-disable-next-line no-unused-vars
 function RightItem({ right, index }) {
   return (
     <div className="right-item" style={{ animationDelay: `${index * 60}ms` }}>
@@ -702,19 +1350,20 @@ function visibleItems(value) {
 
 function ResultPanel({ result, onFollowup }) {
   const [activeTab, setActiveTab] = useState('brief');
-  const panelConfidence = result.structured?.meta?.confidence ?? result.explainability?.confidence;
+  const [viewMode, setViewMode] = useState('simple');
+  const data = getLegalBriefData(result);
+  const panelConfidence = data.meta?.confidence ?? result.explainability?.confidence;
   const confidenceText = typeof panelConfidence === 'number' ? `${panelConfidence}% confident` : 'Grounded by corpus';
-  const primaryCorpus = result.explainability?.detected_domain || result.structured?.meta?.domain || 'NyayaSetu corpus';
+  const primaryCorpus = result.explainability?.detected_domain || data.meta?.domain || 'NyayaSetu corpus';
   const retrievedCount = result.explainability?.number_of_chunks_used || result.retrieved_sections?.length || 0;
+  const sourceCount = result.retrieved_sections?.length || 0;
 
   const tabs = [
-    { id: 'brief', label: 'Brief', count: null, note: 'Executive summary and strategy' },
-    { id: 'analysis', label: 'Analysis', count: result.key_points?.length || null, note: 'Narrative legal reasoning' },
-    { id: 'articles', label: 'Articles', count: result.articles_cited?.length || result.retrieved_sections?.length, note: 'Core citations and references' },
-    { id: 'rights', label: 'Rights', count: result.your_rights?.length, note: 'Rights triggered by the facts' },
-    { id: 'steps', label: 'Next Steps', count: result.next_steps?.length, note: 'Practical actions to take' },
-    { id: 'sources', label: 'Source Sections', count: result.retrieved_sections?.length, note: 'Retrieved constitutional text' },
-    { id: 'explain', label: 'Explainability', count: null, note: 'Domain detection and insights' },
+    { id: 'brief', label: 'Brief', count: data.laws.length || null, note: 'Overview, snapshot, entities, strength, laws' },
+    { id: 'rights', label: 'Rights', count: data.rights.length + data.limits.length || null, note: 'Claims, limits, and watchouts' },
+    { id: 'strategy', label: 'Strategy', count: data.evidence.length + data.steps.length + data.followups.length || null, note: 'Evidence, dos, timeline, follow-ups' },
+    { id: 'analysis', label: 'Analysis', count: (result.key_points?.length || 0) + (result.articles_cited?.length || 0) || null, note: 'Legal points, articles, detailed next steps' },
+    { id: 'sources', label: 'Sources', count: sourceCount || null, note: 'Source sections and explainability' },
   ];
 
   const activeTabMeta = tabs.find(tab => tab.id === activeTab) || tabs[0];
@@ -741,13 +1390,169 @@ function ResultPanel({ result, onFollowup }) {
     await navigator.clipboard.writeText(text);
   }, [result]);
 
+  const renderBriefTab = () => (
+    <div className="tab-pane">
+      <LegalCaseOverview data={data} result={result} urgency={result.urgency} viewMode={viewMode} />
+      {viewMode === 'detailed' && <DomainRoutingCard activeDomain={data.activeDomain} />}
+      <div className="brief-grid brief-grid-top">
+        <CaseSnapshotCard data={data} urgency={result.urgency} viewMode={viewMode} />
+        <EntityMapCard parties={data.parties} result={result} />
+      </div>
+      <div className="brief-grid">
+        <CaseStrengthCard strength={data.strength} viewMode={viewMode} />
+        <ApplicableLawsCard laws={data.laws} viewMode={viewMode} />
+      </div>
+      {viewMode === 'detailed' && <DetailedOptionalCards data={data} />}
+    </div>
+  );
+
+  const renderRightsTab = () => (
+    <div className="tab-pane">
+      <p className="tab-intro">The claimable rights and the practical limits visible from the current facts.</p>
+      <RightsAndLimitsCards rights={data.rights} limits={data.limits} viewMode={viewMode} />
+      {viewMode === 'detailed' && (
+        <div className="legal-aid-box">
+          <h4>Free legal support</h4>
+          <p>Contact the <strong>District Legal Services Authority (DLSA)</strong> for free legal aid.</p>
+          <p><strong>Tele-Law Helpline:</strong> 15100</p>
+          <p><strong>National Legal Services Authority:</strong> nalsa.gov.in</p>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderStrategyTab = () => (
+    <div className="tab-pane">
+      <div className="brief-grid">
+        <EvidenceCard evidence={data.evidence} viewMode={viewMode} />
+        <DoAvoidCard doList={data.doList} avoidList={data.avoidList} viewMode={viewMode} />
+      </div>
+      <ActionTimelineCard steps={data.steps} viewMode={viewMode} />
+      <FollowupsCard followups={viewMode === 'simple' ? data.followups.slice(0, 4) : data.followups} onFollowup={onFollowup} />
+    </div>
+  );
+
+  const renderAnalysisTab = () => (
+    <div className="tab-pane">
+      {result.key_points?.length > 0 && (
+        <div className="key-points-box">
+          <div className="section-heading">
+            <h4>Key Legal Points</h4>
+            <span className="section-caption">Fast scan of the most important takeaways</span>
+          </div>
+          <div className="key-points-grid">
+            {(viewMode === 'simple' ? result.key_points.slice(0, 4) : result.key_points).map((pt, i) => (
+              <div key={`${pt}-${i}`} className="key-point-card">{pt}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {viewMode === 'detailed' && result.articles_cited?.length > 0 && (
+        <section className="brief-card">
+          <div className="section-heading">
+            <h4>Articles</h4>
+            <span className="section-caption">Core citations and references</span>
+          </div>
+          <div className="articles-list">
+            {result.articles_cited.map((a, i) => (
+              <ArticleCard key={`${a.number || a.title}-${i}`} article={a} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {viewMode === 'detailed' && (
+        <>
+          <section className="brief-card">
+            <div className="section-heading">
+              <h4>Next Steps (Detailed)</h4>
+              <span className="section-caption">Practical actions to take</span>
+            </div>
+            <div className="steps-list">
+              {(result.next_steps || []).map((s, i) => (
+                <StepCard key={`${s}-${i}`} step={s} index={i} />
+              ))}
+            </div>
+          </section>
+
+          <div className="analysis-body">
+            <RenderText text={result.analysis} />
+          </div>
+        </>
+      )}
+
+      {viewMode === 'simple' && (
+        <div className="disclaimer-box">
+          <span className="disclaimer-label">Important</span>
+          <p>{result.disclaimer}</p>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSourcesTab = () => {
+    const visibleSections = viewMode === 'simple' ? (result.retrieved_sections || []).slice(0, 3) : result.retrieved_sections || [];
+
+    return (
+      <div className="tab-pane">
+        <p className="tab-intro">
+          {viewMode === 'simple'
+            ? 'Top source matches that support this answer.'
+            : 'Retrieved source sections and the reasoning trail behind this answer.'}
+        </p>
+        <div className="sections-list">
+          {visibleSections.length > 0 ? visibleSections.map((s, i) => (
+            viewMode === 'simple' ? (
+              <div key={`${s.title}-${i}`} className="section-card source-summary-card">
+                <div className="section-card-header source-summary-static">
+                  <div className="section-card-primary">
+                    <div className="section-title">{s.title}</div>
+                    <p className="source-summary-excerpt">{s.excerpt}</p>
+                  </div>
+                  {typeof s.score === 'number' && <span className="tab-count">{s.score.toFixed(1)}</span>}
+                </div>
+              </div>
+            ) : (
+              <SectionCard key={`${s.title}-${i}`} section={s} index={i} />
+            )
+          )) : <p className="empty-state">No retrieved source sections available.</p>}
+        </div>
+
+        <ExplainabilityCard explainability={result.explainability} viewMode={viewMode} />
+
+        {viewMode === 'detailed' && result.explainability?.source_documents?.length > 0 && (
+          <section className="brief-card">
+            <div className="section-heading">
+              <h4>Source Documents</h4>
+              <span className="section-caption">Documents sourced for this query</span>
+            </div>
+            <div className="pill-list">
+              {result.explainability.source_documents.map((doc, i) => (
+                <div key={`${doc}-${i}`} className="info-pill">{doc}</div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    );
+  };
+
+  const renderActiveTab = () => {
+    if (activeTab === 'rights') return renderRightsTab();
+    if (activeTab === 'strategy') return renderStrategyTab();
+    if (activeTab === 'analysis') return renderAnalysisTab();
+    if (activeTab === 'sources') return renderSourcesTab();
+    return renderBriefTab();
+  };
+
   return (
-    <div className="result-panel">
+    <div className="result-panel legal-result-panel">
       <div className="result-header">
         <div className="result-header-top">
           <div className="result-title-section">
             <p className="result-eyebrow">{result.case_type}</p>
-            <h2 className="result-title">{result.structured?.meta?.case_type || 'Legal Analysis'}</h2>
+            <h2 className="result-title">{data.meta?.case_type || 'Legal Analysis'}</h2>
             <p className="result-summary">{result.summary}</p>
           </div>
           <div className="result-badges">
@@ -768,200 +1573,62 @@ function ResultPanel({ result, onFollowup }) {
           </div>
         )}
 
-        <div className="result-metrics-strip">
-          <div className="metric-tile">
-            <span>Docs retrieved</span>
-            <strong>{retrievedCount || '—'}</strong>
+        {viewMode === 'detailed' && (
+          <div className="result-metrics-strip">
+            <div className="metric-tile">
+              <span>Docs retrieved</span>
+              <strong>{retrievedCount || '-'}</strong>
+            </div>
+            <div className="metric-tile">
+              <span>Primary corpus</span>
+              <strong>{primaryCorpus}</strong>
+            </div>
+            <div className="metric-tile">
+              <span>Confidence</span>
+              <strong className="metric-good">{typeof panelConfidence === 'number' && panelConfidence >= 75 ? 'High' : confidenceText}</strong>
+            </div>
           </div>
-          <div className="metric-tile">
-            <span>Primary corpus</span>
-            <strong>{primaryCorpus}</strong>
-          </div>
-          <div className="metric-tile">
-            <span>Confidence</span>
-            <strong className="metric-good">{typeof panelConfidence === 'number' && panelConfidence >= 75 ? 'High' : confidenceText}</strong>
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="result-shell">
-        <aside className="result-sidebar">
-          <div className="sidebar-card">
-            <span className="sidebar-label">Consultation flow</span>
-            <h3>{activeTabMeta.label}</h3>
-            <p>{activeTabMeta.note}</p>
-          </div>
-
-          <nav className="sidebar-nav" aria-label="Result sections">
+      <div className="legal-flow-toolbar">
+        <div className="toolbar-integrated-row">
+          <nav className="legal-tab-rail" aria-label="Grouped result sections">
             {tabs.map(tab => (
               <button
                 key={tab.id}
                 type="button"
-                className={`sidebar-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                className={`sidebar-tab-btn legal-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span className="sidebar-tab-copy">
                   <span className="sidebar-tab-label">{tab.label}</span>
-                  <span className="sidebar-tab-note">{tab.note}</span>
                 </span>
                 {tab.count > 0 && <span className="tab-count">{tab.count}</span>}
               </button>
             ))}
           </nav>
 
-          <div className="sidebar-card sidebar-card-muted">
-            <span className="sidebar-label">Working query</span>
-            <p>{result.query}</p>
+          <div className="mode-toggle-pill" aria-label="Result detail level">
+            {['simple', 'detailed'].map(mode => (
+              <button
+                key={mode}
+                type="button"
+                className={viewMode === mode ? 'active' : ''}
+                onClick={() => setViewMode(mode)}
+                aria-pressed={viewMode === mode}
+              >
+                {mode === 'simple' ? 'Simple' : 'Detailed'}
+              </button>
+            ))}
           </div>
-        </aside>
+        </div>
+      </div>
 
+      <div className="legal-result-shell">
         <div className="result-main">
           <div className="tab-content">
-            {activeTab === 'brief' && (
-              <div className="tab-pane">
-                <StructuredPanel
-                  structured={result.structured}
-                  urgency={result.urgency}
-                  result={result}
-                  onFollowup={onFollowup}
-                />
-              </div>
-            )}
-
-            {activeTab === 'analysis' && (
-              <div className="tab-pane">
-                {result.key_points?.length > 0 && (
-                  <div className="key-points-box">
-                    <div className="section-heading">
-                      <h4>Key Legal Points</h4>
-                      <span className="section-caption">Fast scan of the most important takeaways</span>
-                    </div>
-                    <div className="key-points-grid">
-                      {result.key_points.map((pt, i) => <div key={`${pt}-${i}`} className="key-point-card">{pt}</div>)}
-                    </div>
-                  </div>
-                )}
-                <div className="analysis-body">
-                  <RenderText text={result.analysis} />
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'articles' && (
-              <div className="tab-pane">
-                {result.articles_cited?.length > 0 ? (
-                  <>
-                    <p className="tab-intro">Constitutional articles directly relevant to your case.</p>
-                    <div className="articles-list">
-                      {result.articles_cited.map((a, i) => (
-                        <ArticleCard key={`${a.number || a.title}-${i}`} article={a} index={i} />
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <p className="empty-state">No specific articles were extracted by the AI. Use Source Sections to inspect the retrieved constitutional text.</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'rights' && (
-              <div className="tab-pane">
-                <p className="tab-intro">Based on your situation, these rights appear most relevant under Indian law.</p>
-                <div className="rights-list">
-                  {(result.your_rights || []).map((r, i) => (
-                    <RightItem key={`${r}-${i}`} right={r} index={i} />
-                  ))}
-                </div>
-                <div className="legal-aid-box">
-                  <h4>Free legal support</h4>
-                  <p>Contact the <strong>District Legal Services Authority (DLSA)</strong> for free legal aid.</p>
-                  <p><strong>Tele-Law Helpline:</strong> 15100</p>
-                  <p><strong>National Legal Services Authority:</strong> nalsa.gov.in</p>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'steps' && (
-              <div className="tab-pane">
-                <p className="tab-intro">Action items for your situation.</p>
-                <div className="steps-list">
-                  {(result.next_steps || []).map((s, i) => (
-                    <StepCard key={`${s}-${i}`} step={s} index={i} />
-                  ))}
-                </div>
-                <div className="disclaimer-box">
-                  <span className="disclaimer-label">Important</span>
-                  <p>{result.disclaimer}</p>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'sources' && (
-              <div className="tab-pane">
-                <p className="tab-intro">These sections were retrieved from the Constitution of India using the hybrid RAG engine.</p>
-                <div className="sections-list">
-                  {(result.retrieved_sections || []).map((s, i) => (
-                    <SectionCard key={`${s.title}-${i}`} section={s} index={i} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'explain' && result.explainability && (
-              <div className="tab-pane">
-                <p className="tab-intro">Insights into how the AI selected the legal corpus and retrieved sections.</p>
-                
-                <div className="brief-card">
-                  <div className="section-heading">
-                    <h4>Situation-to-Law Mapper</h4>
-                    <span className="section-caption">Automatic domain selection</span>
-                  </div>
-                  <div className="snapshot-table-wrap">
-                    <table className="snapshot-table">
-                      <tbody>
-                        <tr>
-                          <th>Detected Domain</th>
-                          <td><strong>{result.explainability.detected_domain || 'Unknown'}</strong></td>
-                        </tr>
-                        <tr>
-                          <th>Confidence</th>
-                          <td>{result.explainability.confidence || 'N/A'}%</td>
-                        </tr>
-                        <tr>
-                          <th>Matched Keywords</th>
-                          <td>{(result.explainability.matched_keywords || []).join(', ') || 'None'}</td>
-                        </tr>
-                        <tr>
-                          <th>Explanation</th>
-                          <td>{result.explainability.short_explanation}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="brief-card" style={{ marginTop: '20px' }}>
-                  <div className="section-heading">
-                    <h4>Corpus Retrieval</h4>
-                    <span className="section-caption">Documents sourced for this query</span>
-                  </div>
-                  <div className="pill-list">
-                    {result.explainability.source_documents?.map((doc, i) => (
-                      <div key={i} className="info-pill">{doc}</div>
-                    ))}
-                  </div>
-                  <p style={{ marginTop: '10px', color: 'var(--lq-text-soft)', fontSize: '0.9rem' }}>
-                    Number of chunks used: {result.explainability.number_of_chunks_used}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'explain' && !result.explainability && (
-              <div className="tab-pane">
-                <p className="empty-state">No explainability insights available for this query.</p>
-              </div>
-            )}
+            {renderActiveTab()}
           </div>
         </div>
       </div>

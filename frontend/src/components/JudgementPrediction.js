@@ -57,32 +57,24 @@ function JudgementPrediction() {
       <section className="jp-hero">
         <div className="jp-hero-copy">
           <span className="jp-kicker">Judgement Predictor Module</span>
-          <h1>Compare your facts with the local case corpus.</h1>
+          <h1>Compare your scenario with similar <span className="jp-highlight">court hearings</span></h1>
           <p>
-            Paste case facts and NyayaSetu retrieves similar judgments from case_corpus,
-            then asks Ollama to reason over the closest precedents.
+            Share the facts and NyayaSetu surfaces comparable rulings and patterns to guide your next steps.
           </p>
-          <div className="jp-proof-row">
-            <span>Ollama local model</span>
-            <span>case_corpus retrieval</span>
-            <span>Ratio comparison</span>
-          </div>
         </div>
         <div className="jp-module-card">
-          <span className="jp-section-label">Current Run</span>
-          <div className="jp-module-score">{prediction ? `${prediction.success_probability}%` : '--'}</div>
-          <strong>{prediction ? prediction.predicted_outcome : 'Ready for facts'}</strong>
-          <p>{prediction ? `${prediction.confidence}% confidence` : 'No cloud upload required for corpus retrieval.'}</p>
-          <div className="jp-module-grid">
-            <div>
-              <span>Corpus</span>
-              <strong>{prediction?.corpus_stats?.source || 'case_corpus'}</strong>
-            </div>
-            <div>
-              <span>Model</span>
-              <strong>Ollama</strong>
-            </div>
-          </div>
+          <span className="jp-section-label">What you get</span>
+          <strong>{prediction ? `Outcome snapshot: ${prediction.predicted_outcome}` : ''}</strong>
+          <p>
+            {prediction
+              ? `${prediction.success_probability}% likelihood based on similar hearings.`
+              : 'Submit your facts to see outcome trends, risks, and next steps.'}
+          </p>
+          <ul className="jp-module-list">
+            <li>Similar hearing highlights and outcomes</li>
+            <li>Do / avoid guidance grounded in precedents</li>
+            <li>Evidence checklist to strengthen your position</li>
+          </ul>
         </div>
       </section>
 
@@ -93,7 +85,7 @@ function JudgementPrediction() {
               <span className="jp-section-label">Case Facts</span>
               <h2>Describe the dispute</h2>
             </div>
-            <span className="jp-live-pill">Ollama + corpus</span>
+            <span className="jp-live-pill">Local precedents</span>
           </div>
           <textarea
             value={facts}
@@ -123,7 +115,7 @@ function JudgementPrediction() {
             <div className="jp-loader">
               <div className="jp-loader-ring" />
               <h3>Reading precedents</h3>
-              <p>Retrieving similar cases from case_corpus and asking Ollama for ratio-based prediction.</p>
+              <p>Retrieving similar hearings and comparing outcomes.</p>
             </div>
           ) : prediction ? (
             <PredictionResult prediction={prediction} />
@@ -274,7 +266,7 @@ function Misconceptions({ items }) {
 
 function StatsStrip({ prediction }) {
   const stats = [
-    ['Corpus used', prediction.corpus_stats?.source || 'case_corpus'],
+    ['Corpus used', prediction.corpus_stats?.source || 'Local corpus'],
     ['Chunks retrieved', `${prediction.corpus_stats?.cases_retrieved || 0} / ${prediction.corpus_stats?.cases_loaded || 0}`],
     ['Confidence', `${prediction.confidence}%`],
     ['Limitation period', prediction.limitation_period || 'Verify'],
