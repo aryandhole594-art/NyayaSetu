@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Hero from './components/Hero';
 import LegalQuery from './components/LegalQuery';
+import AdvancedLegalTools from './components/AdvancedLegalTools';
 import JudgementPrediction from './components/JudgementPrediction';
 import NyayaDraft from './components/NyayaDraft';
 import ContactPage from './components/ContactPage';
@@ -91,6 +92,15 @@ function App() {
                 </li>
                 <li>
                   <Link
+                    to="/ai-legal-tools"
+                    className={`nav-link ${location.pathname === '/ai-legal-tools' ? 'active' : ''}`}
+                    onClick={closeMenu}
+                  >
+                    AI Tools
+                  </Link>
+                </li>
+                <li>
+                  <Link
                     to="/judgement-prediction"
                     className={`nav-link ${location.pathname === '/judgement-prediction' ? 'active' : ''}`}
                     onClick={closeMenu}
@@ -147,6 +157,7 @@ function App() {
               } 
             />
             <Route path="/legal-advice" element={<LegalQuery />} />
+            <Route path="/ai-legal-tools" element={<AdvancedLegalTools />} />
             <Route path="/judgement-prediction" element={<JudgementPrediction />} />
             <Route path="/nyayadraft" element={<NyayaDraft />} />
             <Route path="/pdf-summariser" element={<LegalQuery />} />

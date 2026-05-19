@@ -1243,6 +1243,30 @@ def generate_text_report(prompt: str) -> str:
             return ""
     return ""
 
+
+from routes.advanced_stub_routes import advanced_stub_bp
+from routes.amendment_routes import amendment_bp
+from routes.chat_routes import chat_bp
+from routes.comparator_routes import comparator_bp
+from routes.fairness_routes import fairness_bp
+from routes.rights_card_routes import rights_card_bp
+from routes.scenario_routes import scenario_bp
+from routes.translator_routes import translator_bp
+from utils.llm_client import configure_llm
+from utils.retriever import configure_retriever
+
+
+configure_retriever(rag_index.retrieve)
+configure_llm(generate_text_report if ((LLM_PROVIDER == "ollama") or gemini_available) else None)
+app.register_blueprint(fairness_bp)
+app.register_blueprint(rights_card_bp)
+app.register_blueprint(scenario_bp)
+app.register_blueprint(translator_bp)
+app.register_blueprint(amendment_bp)
+app.register_blueprint(chat_bp)
+app.register_blueprint(comparator_bp)
+app.register_blueprint(advanced_stub_bp)
+
 @app.route("/document-intel/upload", methods=["POST"])
 def upload_document():
     global INDEX_BUILD_LOCK
@@ -1547,6 +1571,19 @@ def home():
                 "/document-intel/summarize",
                 "/document-intel/contract-analyze",
                 "/document-intel/court-notice-decode",
+                "/api/fairness-check",
+                "/api/rights-card",
+                "/api/simulate-scenario",
+                "/api/translate",
+                "/api/amendments",
+                "/api/amendments/<article_number>",
+                "/api/compare-articles",
+                "/api/chat",
+                "/api/document-analyzer",
+                "/api/petition-draft",
+                "/api/landmark-cases?topic=",
+                "/api/bail-eligibility",
+                "/api/legal-timeline",
             ],
         }
     )
