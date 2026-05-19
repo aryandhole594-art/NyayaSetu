@@ -171,3 +171,8 @@ config.yaml
 commands.txt
 context.txt
 context.md
+oldResearchpaper.txt
+paper_update_notes.txt
+
+# Benchmark outputs
+backend/benchmarks/results/
