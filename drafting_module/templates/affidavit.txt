@@ -1,7 +1,7 @@
 AFFIDAVIT
 Date: {{date}}
 Place: {{city}}, {{state}}
-BETWE0N:
+BETWEEN:
 1. {{deponent_name}}, aged {{age}} years, {{relationship}} of {{father_or_husband_name}}, residing at {{address}}.
 I, {{deponent_name}}, do hereby solemnly affirm and state on oath as follows:
 1. That I am a citizen of {{nationality}} and a permanent resident of {{{residence}}.

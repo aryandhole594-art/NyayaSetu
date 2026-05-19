@@ -3379,9 +3379,10 @@
 }
 
 .result-tab-trigger[data-state='active'] {
-  background: linear-gradient(135deg, var(--lq-cyan-strong), #0369a1) !important;
-  color: #fff !important;
-  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3) !important;
+  background: linear-gradient(135deg, #2b3a55, #1e293b) !important;
+  color: var(--lq-gold) !important;
+  border: 1px solid var(--lq-gold) !important;
+  box-shadow: none !important;
 }
 
 .confidence-ring-circle {

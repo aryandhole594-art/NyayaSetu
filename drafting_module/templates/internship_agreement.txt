@@ -1,6 +1,6 @@
 INTERNSHIP AGREEMENT
 Date: {{date}} Place: {{city_state}}
-BETWE0N:
+BETWEEN:
 1. {{company_name}}, having its office at {{ADDRESS}} (hereinafter referred to as the 'Company')
 2. {{intern_name}}, studying at {INSTITUTION NAME} (hereinafter referred to as the 'Intern')
 WHEREAS:

@@ -1,6 +1,6 @@
 POWER OF ATTORNEY
 Date: {{date}} Place: {{city_state}}
-BETWE0N:
+BETWEEN:
 1. {{principal_name}}, aged {{age}} years, residing at {{address}} (hereinafter referred to as the 'Principal')
 2. {{attorney_name}}, aged {{age}} years, residing at {{address}} (hereinafter referred to as the 'Attorney')
 WHEREAS:
