@@ -74,9 +74,9 @@
 
 .welcome-hero-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
-  gap: 18px;
-  padding: 24px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.9fr);
+  gap: 20px;
+  padding: 20px;
   background:
     radial-gradient(circle at top left, rgba(45, 212, 247, 0.18), transparent 38%),
     linear-gradient(140deg, rgba(16, 28, 48, 0.98), rgba(8, 17, 31, 0.96));
@@ -107,8 +107,8 @@
 
 .welcome-copy h1 {
   margin: 0;
-  font-size: 3rem;
-  line-height: 1;
+  font-size: clamp(2rem, 3vw, 2.7rem);
+  line-height: 1.1;
   font-weight: 800;
   letter-spacing: 0;
 }
@@ -117,28 +117,28 @@
   max-width: 720px;
   margin: 0;
   color: var(--lq-text-soft);
-  font-size: 1.05rem;
+  font-size: 1rem;
   line-height: 1.75;
 }
 
 .welcome-stat-grid {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .welcome-stat-card {
-  padding: 14px 16px;
-  border-radius: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   backdrop-filter: blur(18px);
 }
 
 .welcome-stat-number {
-  font-size: 1.45rem;
+  font-size: 1.25rem;
   font-weight: 800;
   color: var(--lq-gold);
   letter-spacing: 0;
@@ -146,22 +146,22 @@
 
 .welcome-stat-label {
   color: var(--lq-text-soft);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   line-height: 1.5;
 }
 
 .quick-scenarios-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .scenario-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 148px;
-  padding: 18px;
+  min-height: 132px;
+  padding: 16px;
   border: 1px solid var(--lq-border);
   border-radius: 8px;
   background:
@@ -175,9 +175,9 @@
 }
 
 .scenario-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-2px);
   border-color: rgba(45, 212, 247, 0.34);
-  box-shadow: 0 24px 52px rgba(2, 8, 23, 0.34);
+  box-shadow: 0 20px 44px rgba(2, 8, 23, 0.3);
 }
 
 .scenario-card-label {
@@ -191,7 +191,21 @@
 .scenario-card-text {
   color: var(--lq-text-soft);
   line-height: 1.65;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 1024px) {
+  .welcome-hero-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-scenarios-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .status-card {
